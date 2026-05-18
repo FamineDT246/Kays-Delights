@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import ProductCard from '../components/ProductCard'; 
 import { supabase } from '@/lib/supabase';
-import { Search, ShoppingBag, User, X, Plus, Minus, ShoppingCart, ArrowRight } from 'lucide-react'; 
+import { Search, ShoppingBag, User, X, Plus, Minus, ShoppingCart, ArrowRight, Filter } from 'lucide-react'; 
 import { useRouter } from 'next/navigation';
 import { useCart } from '@/context/CartContext';
 import { createPortal } from 'react-dom';
@@ -16,6 +16,7 @@ export default function Home() {
   const [user, setUser] = useState(null);
   const [mounted, setMounted] = useState(false);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false); // NEW STATE
   
   const [selectedTreat, setSelectedTreat] = useState(null);
   const [quantity, setQuantity] = useState(1);
@@ -77,21 +78,21 @@ export default function Home() {
   return (
     <div className="font-sans">
       
-      <section className="relative min-h-[70vh] sm:min-h-[90vh] flex flex-col items-center justify-center text-center px-4 bg-amber-50/50 border-b border-amber-100 overflow-hidden rounded-b-[2rem] sm:rounded-b-[3rem] -mx-4 sm:mx-0">
+      <section className="relative min-h-[70vh] sm:min-h-[90vh] flex flex-col items-center justify-center text-center px-4 bg-amber-50/50 border-b border-amber-100 overflow-hidden sm:rounded-b-[3rem]">
         <div className="absolute top-10 left-0 w-48 h-48 bg-amber-200/30 rounded-full blur-3xl"></div>
         <div className="absolute bottom-10 right-0 w-64 h-64 bg-orange-200/20 rounded-full blur-3xl"></div>
 
         <div className="relative z-10 max-w-3xl mx-auto py-12">
           <span className="text-amber-600 font-black tracking-widest uppercase text-xs sm:text-sm mb-4 block">Handcrafted with Love</span>
-          <h1 className="text-4xl sm:text-5xl md:text-7xl font-black text-gray-900 tracking-tighter mb-4 sm:mb-6 leading-tight">
+          <h1 className="text-5xl sm:text-7xl font-black text-gray-900 tracking-tighter mb-4 sm:mb-6 leading-tight">
             Welcome to <br/><span className="text-amber-600">Kay's Delights!</span>
           </h1>
-          <p className="text-base sm:text-lg md:text-xl text-gray-600 font-medium mb-8 sm:mb-10 max-w-2xl mx-auto px-4">
+          <p className="text-lg md:text-xl text-gray-600 font-medium mb-8 sm:mb-10 max-w-2xl mx-auto px-4">
             Freshly baked cakes, cookies, and artisan breads. Order for pickup or delivery today.
           </p>
           <button 
             onClick={scrollToMenu}
-            className="group bg-amber-600 hover:bg-amber-700 text-white font-black py-3 sm:py-4 px-8 sm:px-10 rounded-full transition-all shadow-xl hover:-translate-y-1 flex items-center gap-3 mx-auto text-base sm:text-lg"
+            className="group bg-amber-600 hover:bg-amber-700 text-white font-black py-4 px-10 rounded-full transition-all shadow-xl hover:-translate-y-1 flex items-center gap-3 mx-auto text-lg"
           >
             Browse Menu 
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
@@ -99,12 +100,22 @@ export default function Home() {
         </div>
       </section>
 
-      <main id="menu-section" className="max-w-7xl mx-auto px-0 sm:px-4 py-10 sm:py-16 relative">
+      <main id="menu-section" className="max-w-7xl mx-auto px-4 sm:px-0 py-10 sm:py-16 relative">
         
-        <div className="flex flex-col mb-8 gap-6 px-4 sm:px-0">
+        <div className="flex flex-col mb-8 gap-4">
           
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
+          <div className="flex items-center justify-between w-full">
             <h2 className="text-3xl font-black text-gray-900 whitespace-nowrap">Our Menu</h2>
+            <button 
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className="sm:hidden flex items-center gap-2 bg-gray-100 px-4 py-2 rounded-xl text-sm font-bold text-gray-700 transition"
+            >
+              <Filter className="w-4 h-4" /> Filters
+            </button>
+          </div>
+          
+          {/* Mobile Dropdown & Desktop Row */}
+          <div className={`${showMobileFilters ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full transition-all`}>
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
@@ -112,35 +123,35 @@ export default function Home() {
                 placeholder="Search treats..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-full font-bold text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-amber-50 focus:border-amber-400 transition shadow-sm bg-white"
+                className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl sm:rounded-full font-bold text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-amber-50 focus:border-amber-400 transition shadow-sm bg-white"
               />
             </div>
-          </div>
-          
-          <div className="flex overflow-x-auto gap-2 pb-2 hide-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 w-[100vw] sm:w-auto">
-            {[
-              { id: 'all', label: 'All Treats' },
-              { id: 'cakes', label: '🍰 Cakes' },
-              { id: 'cookies', label: '🍪 Cookies' },
-              { id: 'breads', label: '🍞 Breads' },
-              { id: 'pastries', label: '🥐 Pastries' }
-            ].map(cat => (
-              <button 
-                key={cat.id}
-                onClick={() => setActiveCategory(cat.id)}
-                className={`px-5 py-2.5 rounded-full font-bold text-sm whitespace-nowrap shrink-0 transition-all ${
-                  activeCategory === cat.id 
-                    ? 'bg-amber-600 text-white shadow-md' 
-                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {cat.label}
-              </button>
-            ))}
+            
+            <div className="flex flex-col sm:flex-row sm:overflow-x-auto gap-2 pb-2 hide-scrollbar w-full sm:w-auto">
+              {[
+                { id: 'all', label: 'All Treats' },
+                { id: 'cakes', label: '🍰 Cakes' },
+                { id: 'cookies', label: '🍪 Cookies' },
+                { id: 'breads', label: '🍞 Breads' },
+                { id: 'pastries', label: '🥐 Pastries' }
+              ].map(cat => (
+                <button 
+                  key={cat.id}
+                  onClick={() => { setActiveCategory(cat.id); setShowMobileFilters(false); }}
+                  className={`px-5 py-3 sm:py-2.5 rounded-xl sm:rounded-full font-bold text-sm text-left sm:text-center whitespace-nowrap shrink-0 transition-all ${
+                    activeCategory === cat.id 
+                      ? 'bg-amber-600 text-white shadow-md' 
+                      : 'bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="min-h-[400px] px-4 sm:px-0">
+        <div className="min-h-[400px]">
           {loading ? (
             <div className="flex flex-col justify-center items-center h-64 gap-4">
               <div className="w-12 h-12 border-4 border-amber-200 border-t-amber-600 rounded-full animate-spin"></div>
@@ -150,7 +161,7 @@ export default function Home() {
             <div className="bg-white/50 border-2 border-dashed border-gray-200 rounded-[2rem] p-16 text-center">
               <p className="text-gray-500 font-bold text-xl mb-3">No treats match your search.</p>
               <button 
-                onClick={() => { setActiveCategory('all'); setSearchQuery(''); }} 
+                onClick={() => { setActiveCategory('all'); setSearchQuery(''); setShowMobileFilters(false); }} 
                 className="text-amber-600 font-black hover:text-amber-700 transition"
               >
                 Clear filters and view all menu items

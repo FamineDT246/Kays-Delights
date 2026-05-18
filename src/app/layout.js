@@ -17,8 +17,9 @@ export default function RootLayout({ children }) {
         <CartProvider>
           <Navbar />
           
-          <div className="max-w-7xl mx-auto my-2 sm:my-6 px-2 sm:px-4">
-            <main className="bg-white/95 backdrop-blur-md shadow-xl rounded-2xl sm:rounded-3xl border border-white/20 min-h-[85vh] p-4 sm:p-6 md:p-10 text-gray-900">
+          {/* Removed padding, margin, and borders on mobile for edge-to-edge look */}
+          <div className="max-w-7xl mx-auto sm:my-6 sm:px-4">
+            <main className="bg-white/95 sm:backdrop-blur-md sm:shadow-xl sm:rounded-3xl border-0 sm:border border-white/20 min-h-[85vh] p-4 sm:p-6 md:p-10 text-gray-900">
               {children}
             </main>
           </div>

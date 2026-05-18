@@ -109,6 +109,14 @@ export default function Account() {
     return 'w-full';
   };
 
+  // For the vertical mobile tracker
+  const getVerticalProgressHeight = (step) => {
+    if (step <= 1) return 'h-0';
+    if (step === 2) return 'h-[33%]';
+    if (step === 3) return 'h-[66%]';
+    return 'h-full';
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -118,7 +126,7 @@ export default function Account() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-12">
+    <div className="max-w-4xl mx-auto py-6 sm:py-12">
       <div className="mb-10">
         <h1 className="text-3xl font-black text-gray-900 mb-2">My Account</h1>
         <p className="text-gray-500 font-medium">Manage your details and track your active orders.</p>
@@ -160,14 +168,14 @@ export default function Account() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <p className={`text-sm font-bold ${profileMessage.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
             {profileMessage}
           </p>
           <button 
             onClick={handleSaveProfile}
             disabled={savingProfile}
-            className="bg-gray-900 hover:bg-black text-white font-bold py-3 px-8 rounded-xl transition flex items-center gap-2 disabled:opacity-70"
+            className="w-full sm:w-auto bg-gray-900 hover:bg-black text-white font-bold py-3 px-8 rounded-xl transition flex items-center justify-center gap-2 disabled:opacity-70"
           >
             {savingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Save Details
@@ -189,9 +197,17 @@ export default function Account() {
         ) : (
           activeOrders.map((order) => {
             const currentStep = getStatusStep(order.status);
+            
+            const stepsArray = [
+              { step: 1, icon: Package, label: 'Received' },
+              { step: 2, icon: Clock, label: 'Prepping' },
+              { step: 3, icon: CheckCircle, label: 'Ready' },
+              { step: 4, icon: Truck, label: 'Delivered' }
+            ];
+
             return (
               <div key={order.id} className="bg-white border border-gray-100 rounded-[2rem] p-6 md:p-8 shadow-sm">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 md:mb-8">
                   <div>
                     <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Order #{order.id.split('-')[0]}</p>
                     <p className="text-lg font-black text-gray-900">${Number(order.total_amount).toFixed(2)}</p>
@@ -201,17 +217,13 @@ export default function Account() {
                   </span>
                 </div>
 
-                <div className="relative mb-8 mt-4 max-w-2xl mx-auto">
+                {/* DESKTOP HORIZONTAL TRACKER */}
+                <div className="hidden md:block relative mb-8 mt-4 max-w-2xl mx-auto">
                   <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-2 bg-gray-100 rounded-full z-0"></div>
                   <div className={`absolute left-0 top-1/2 -translate-y-1/2 h-2 bg-amber-500 rounded-full z-0 transition-all duration-1000 ${getProgressWidth(currentStep)}`}></div>
                   
                   <div className="relative z-10 flex justify-between">
-                    {[
-                      { step: 1, icon: Package, label: 'Received' },
-                      { step: 2, icon: Clock, label: 'Prepping' },
-                      { step: 3, icon: CheckCircle, label: 'Ready' },
-                      { step: 4, icon: Truck, label: 'Delivered' }
-                    ].map((item) => {
+                    {stepsArray.map((item) => {
                       const Icon = item.icon;
                       const isActive = currentStep >= item.step;
                       return (
@@ -227,6 +239,30 @@ export default function Account() {
                     })}
                   </div>
                 </div>
+
+                {/* MOBILE VERTICAL TRACKER */}
+                <div className="md:hidden relative mt-6 mb-2 ml-2">
+                  <div className="absolute left-[19px] top-0 bottom-0 w-1 bg-gray-100 rounded-full z-0"></div>
+                  <div className={`absolute left-[19px] top-0 w-1 bg-amber-500 rounded-full z-0 transition-all duration-1000 ${getVerticalProgressHeight(currentStep)}`}></div>
+                  
+                  <div className="flex flex-col gap-6 relative z-10">
+                    {stepsArray.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = currentStep >= item.step;
+                      return (
+                        <div key={item.step} className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-full shrink-0 flex items-center justify-center transition-colors duration-500 border-4 border-white shadow-sm ${isActive ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <span className={`text-xs font-black uppercase tracking-widest ${isActive ? 'text-gray-900' : 'text-gray-400'}`}>
+                            {item.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
               </div>
             );
           })
