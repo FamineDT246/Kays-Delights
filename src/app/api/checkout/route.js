@@ -4,10 +4,9 @@ import { z } from 'zod';
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
-// Create a secure backend-only client that bypasses RLS safely
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY // The secret key
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 const ratelimit = new Ratelimit({
@@ -21,7 +20,7 @@ const checkoutSchema = z.object({
     id: z.string(),
     quantity: z.number().int().min(1),
   })).min(1, "Cart cannot be empty"),
-  deliveryType: z.enum(['pickup', 'delivery', 'pickup_scheduled', 'delivery_scheduled']),
+  deliveryType: z.enum(['same_day_pickup', 'same_day_delivery', 'scheduled_pickup', 'scheduled_delivery']),
   address: z.string(),
   phone: z.string().min(7, "Valid phone number required"),
   scheduledDate: z.string(),
@@ -42,8 +41,8 @@ export async function POST(request) {
     }
 
     const body = await request.json();
-
     const validation = checkoutSchema.safeParse(body);
+    
     if (!validation.success) {
       return Response.json({ error: "Invalid request data format." }, { status: 400 });
     }
@@ -54,11 +53,12 @@ export async function POST(request) {
       return Response.json({ error: "Delivery address is required for delivery orders." }, { status: 400 });
     }
 
-    // We can still use the regular client for reading data
     const itemIds = cart.map(item => item.id);
+    
+    // We now securely fetch the exact name and price directly from the database
     const { data: dbItems, error } = await supabase
       .from('treats')
-      .select('id, price, cost_to_make, is_available')
+      .select('id, name, price, cost_to_make, is_available')
       .in('id', itemIds);
 
     if (error) throw error;
@@ -68,17 +68,29 @@ export async function POST(request) {
     const deliveryFee = deliveryType.includes('delivery') ? 15.00 : 0;
     const rushFee = deliveryType.includes('same_day') ? 10.00 : 0;
 
-    cart.forEach(cartItem => {
+    // Reconstruct the cart items using ONLY verified database data
+    const secureItems = cart.map(cartItem => {
       const realItem = dbItems.find(db => db.id === cartItem.id);
       if (realItem && realItem.is_available) {
         secureTotal += (realItem.price * cartItem.quantity);
         secureTotalCost += ((realItem.cost_to_make || 0) * cartItem.quantity);
+        return {
+          id: cartItem.id,
+          name: realItem.name,
+          price: realItem.price,
+          quantity: cartItem.quantity
+        };
       }
-    });
+      return null;
+    }).filter(item => item !== null);
 
     secureTotal += deliveryFee + rushFee;
 
+    // Generate the unique Order Number
+    const generatedOrderNumber = 'ORD-' + Math.floor(100000 + Math.random() * 900000);
+
     const orderData = {
+      order_number: generatedOrderNumber,
       user_id: userId,
       customer_name: customerName,
       delivery_address: address,
@@ -90,16 +102,16 @@ export async function POST(request) {
       delivery_type: deliveryType,
       scheduled_date: scheduledDate,
       status: 'Received',
-      items: cart,
+      items: secureItems, // Attach the securely rebuilt array
     };
 
-    // SECURE FIX: We use the Admin Client to securely insert the order
     const { error: insertError } = await supabaseAdmin.from('orders').insert([orderData]);
 
     if (insertError) throw insertError;
 
     return Response.json({ success: true });
   } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : "An unexpected server error occurred.";
+    return Response.json({ error: message }, { status: 500 });
   }
 }

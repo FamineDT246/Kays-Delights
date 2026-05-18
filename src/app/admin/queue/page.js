@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { 
   Package, MapPin, Phone, 
-  Loader2, RefreshCw, BellRing, Archive, ExternalLink, ArrowLeft, XCircle // ADDED XCircle icon
+  Loader2, RefreshCw, BellRing, Archive, ExternalLink, ArrowLeft, XCircle 
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -70,7 +70,6 @@ export default function LiveQueue() {
     setUpdatingId(null);
   };
 
-  // NEW: Cancel Order Function
   const handleCancelOrder = async (orderId) => {
     if (!window.confirm("Are you sure you want to cancel this order? It will be marked as Cancelled and archived immediately.")) return;
 
@@ -86,8 +85,6 @@ export default function LiveQueue() {
     if (error) {
       alert("Could not cancel order.");
       setUpdatingId(null);
-    } else {
-      // The real-time listener will automatically remove it from the screen since is_archived is now true
     }
   };
 
@@ -101,7 +98,6 @@ export default function LiveQueue() {
   return (
     <div className="space-y-8 font-sans max-w-7xl mx-auto px-4 py-8">
       
-      {/* Header Section with Back Arrow */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-amber-50 p-6 rounded-[2rem] border border-amber-100 shadow-sm">
         <div className="flex items-center gap-4">
           <Link href="/admin" className="p-3 bg-white rounded-full hover:bg-amber-100 transition shadow-sm text-amber-700">
@@ -124,7 +120,6 @@ export default function LiveQueue() {
         </button>
       </div>
 
-      {/* Orders List */}
       <div className="grid grid-cols-1 gap-6">
         {orders.length === 0 ? (
           <div className="text-center py-20 bg-white/50 border-2 border-dashed border-gray-200 rounded-3xl">
@@ -140,12 +135,12 @@ export default function LiveQueue() {
                 order.status === 'Received' ? 'border-blue-300 ring-4 ring-blue-50' : 'border-gray-100'
               }`}
             >
-              {/* Card Header */}
               <div className="px-6 py-4 bg-gray-50 border-b border-gray-100 flex flex-wrap justify-between items-center gap-4">
                 <div className="flex items-center gap-4">
                   <div>
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Order ID</p>
-                    <p className="font-mono text-sm font-bold text-gray-700">#{order.id.slice(0, 8)}</p>
+                    {/* Render the clean order number instead of the sliced UUID */}
+                    <p className="font-mono text-sm font-bold text-gray-700">{order.order_number}</p>
                   </div>
                   <div className="h-8 w-[1px] bg-gray-200"></div>
                   <div>
@@ -172,7 +167,6 @@ export default function LiveQueue() {
                     <option value="Delivered">Delivered</option>
                   </select>
 
-                  {/* ACTION BUTTONS (Archive & Cancel) */}
                   <div className="flex items-center gap-2 border-l border-gray-200 pl-3">
                     {order.status === 'Delivered' && (
                       <button 
@@ -185,7 +179,6 @@ export default function LiveQueue() {
                       </button>
                     )}
 
-                    {/* NEW: CANCEL BUTTON */}
                     <button 
                       onClick={() => handleCancelOrder(order.id)}
                       disabled={updatingId === order.id}
@@ -198,7 +191,6 @@ export default function LiveQueue() {
                 </div>
               </div>
 
-              {/* Card Body */}
               <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-8">
                 <div className="md:col-span-1 border-r border-gray-50 pr-4">
                   <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">Order Items</h4>

@@ -14,42 +14,57 @@ export default function Cart() {
   const router = useRouter();
 
   const [user, setUser] = useState(null);
-  // Default to a scheduled pickup to avoid accidental rush fees
-  const [deliveryType, setDeliveryType] = useState('pickup_scheduled');
+  const [deliveryType, setDeliveryType] = useState('scheduled_pickup');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [scheduledDate, setScheduledDate] = useState('');
+  
   const [processing, setProcessing] = useState(false);
   const [loadingUser, setLoadingUser] = useState(true);
+  const [isSameDayEnabled, setIsSameDayEnabled] = useState(true);
+  
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [mapUrl, setMapUrl] = useState('');
 
+  /**
+   * We fetch the global store configuration concurrently with the user profile.
+   * This determines if the kitchen is currently accepting rush orders. 
+   * If disabled, we strictly fall back to scheduled fulfillment.
+   */
   useEffect(() => {
     const checkAuthAndProfile = async () => {
       const { data: { session } } = await supabase.auth.getSession();
+      
       if (!session) {
         router.push('/login?next=cart');
-      } else {
-        setUser(session.user);
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('phone, default_address')
-          .eq('id', session.user.id)
-          .single();
+        return;
+      } 
+      
+      setUser(session.user);
+      
+      const [profileResponse, settingsResponse] = await Promise.all([
+        supabase.from('profiles').select('phone, default_address').eq('id', session.user.id).single(),
+        supabase.from('store_settings').select('same_day_enabled').eq('id', 'default').single()
+      ]);
 
-        if (profileData) {
-          if (profileData.phone) setPhone(profileData.phone);
-          if (profileData.default_address) {
-            if (profileData.default_address.includes('http')) {
-              setMapUrl(profileData.default_address);
-            } else {
-              setAddress(profileData.default_address);
-            }
+      if (profileResponse.data) {
+        if (profileResponse.data.phone) setPhone(profileResponse.data.phone);
+        if (profileResponse.data.default_address) {
+          if (profileResponse.data.default_address.includes('http')) {
+            setMapUrl(profileResponse.data.default_address);
+          } else {
+            setAddress(profileResponse.data.default_address);
           }
         }
       }
+
+      if (settingsResponse.data) {
+        setIsSameDayEnabled(settingsResponse.data.same_day_enabled);
+      }
+
       setLoadingUser(false);
     };
+    
     checkAuthAndProfile();
   }, [router]);
 
@@ -78,7 +93,7 @@ export default function Cart() {
           phone,
           scheduledDate: isScheduled ? scheduledDate : localDate,
           userId: user.id,
-          customerName: user.user_metadata?.full_name || 'Guest',
+          customerName: user?.user_metadata?.full_name || 'Guest',
         }),
       });
 
@@ -89,15 +104,27 @@ export default function Cart() {
       clearCart();
       router.push('/account');
     } catch (error) {
-      alert("Error placing order: " + error.message);
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+      alert("Error placing order: " + errorMessage);
       setProcessing(false);
     }
   };
 
-  // Fee Calculation Logic
   const deliveryFee = deliveryType.includes('delivery') ? 15.00 : 0;
   const rushFee = deliveryType.includes('same_day') ? 10.00 : 0;
   const finalTotal = cartTotal + deliveryFee + rushFee;
+
+  const fulfillmentOptions = [
+    { id: 'scheduled_pickup', label: 'Scheduled Pickup', desc: 'Free' },
+    { id: 'scheduled_delivery', label: 'Scheduled Delivery', desc: '+$15.00' }
+  ];
+
+  if (isSameDayEnabled) {
+    fulfillmentOptions.unshift(
+      { id: 'same_day_pickup', label: 'Same Day Pickup', desc: '+$10.00 Rush' },
+      { id: 'same_day_delivery', label: 'Same Day Delivery', desc: '+$25.00 Rush' }
+    );
+  }
 
   if (!isMounted || loadingUser) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 text-amber-500 animate-spin" /></div>;
 
@@ -120,7 +147,6 @@ export default function Cart() {
       <div className="flex flex-col lg:flex-row gap-10">
         <div className="lg:w-2/3 space-y-8">
           
-          {/* Order Items Section */}
           <div className="bg-white rounded-[2rem] p-6 md:p-8 border border-gray-100 shadow-sm">
             <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
               <ShoppingBag className="w-5 h-5 text-amber-600" /> Order Items
@@ -130,7 +156,6 @@ export default function Cart() {
                 <div key={item.id} className="flex items-center justify-between border-b border-gray-50 pb-6 last:border-0 last:pb-0">
                   <div className="flex items-center gap-4">
                     <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-2xl overflow-hidden shrink-0 relative">
-                      {/* FIXED: Replaced Next.js Image with standard img to fix external URL loading */}
                       <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
                     </div>
                     <div>
@@ -147,20 +172,15 @@ export default function Cart() {
             </div>
           </div>
 
-          {/* Fulfillment Options Section */}
           <div className="bg-white rounded-[2rem] p-6 md:p-8 border border-gray-100 shadow-sm">
-            <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
-              <Truck className="w-5 h-5 text-amber-600" /> Fulfillment Options
-            </h2>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-black text-gray-900 flex items-center gap-2">
+                <Truck className="w-5 h-5 text-amber-600" /> Fulfillment Options
+              </h2>
+            </div>
             
-            {/* FIXED: Updated IDs to trigger the math logic correctly */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-4">
-              {[
-                { id: 'pickup_same_day', label: 'Same Day Pickup', desc: '+$10.00 Rush' },
-                { id: 'delivery_same_day', label: 'Same Day Delivery', desc: '+$25.00 Rush' },
-                { id: 'pickup_scheduled', label: 'Scheduled Pickup', desc: 'Free' },
-                { id: 'delivery_scheduled', label: 'Scheduled Delivery', desc: '+$15.00' }
-              ].map((opt) => (
+            <div className={`grid gap-2 sm:gap-3 mb-4 ${isSameDayEnabled ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2'}`}>
+              {fulfillmentOptions.map((opt) => (
                 <button
                   key={opt.id}
                   onClick={() => setDeliveryType(opt.id)}
@@ -174,13 +194,14 @@ export default function Cart() {
               ))}
             </div>
 
-            {/* NEW: 2/3 PM Time Constraint Notice */}
-            <div className="mb-8 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <p className="text-xs sm:text-sm font-bold text-amber-800 leading-relaxed">
-                Notice: Any Same-Day Pickup or Delivery orders placed after 2:00 PM will automatically be scheduled for the following day due to time constraints.
-              </p>
-            </div>
+            {isSameDayEnabled && (
+              <div className="mb-8 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-xs sm:text-sm font-bold text-amber-800 leading-relaxed">
+                  Notice: Any Same-Day Pickup or Delivery orders placed after 2:00 PM will automatically be scheduled for the following day due to time constraints.
+                </p>
+              </div>
+            )}
 
             <div className="space-y-5">
               <div>
@@ -229,7 +250,6 @@ export default function Cart() {
           </div>
         </div>
 
-        {/* Order Summary Section */}
         <div className="lg:w-1/3">
           <div className="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm sticky top-28">
             <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
@@ -237,13 +257,10 @@ export default function Cart() {
             </h2>
             <div className="space-y-4 mb-6 pb-6 border-b border-gray-100">
               <div className="flex justify-between text-gray-600 font-bold"><span>Subtotal</span><span>${cartTotal.toFixed(2)}</span></div>
-              
-              {/* Split fees to make it clear to the customer */}
               <div className="flex justify-between text-gray-600 font-bold"><span>Delivery Fee</span><span>${deliveryFee.toFixed(2)}</span></div>
               {rushFee > 0 && (
                 <div className="flex justify-between text-amber-600 font-bold"><span>Same-Day Rush Fee</span><span>${rushFee.toFixed(2)}</span></div>
               )}
-
             </div>
             <div className="flex justify-between items-end mb-8">
               <span className="text-gray-400 font-black uppercase tracking-widest text-xs">Total</span>

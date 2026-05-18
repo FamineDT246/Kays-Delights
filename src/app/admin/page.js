@@ -3,22 +3,53 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import { Activity, PackageSearch, History, ChevronRight, Store, TrendingUp } from 'lucide-react'; // ADDED TrendingUp
+import { Activity, PackageSearch, History, ChevronRight, Store, TrendingUp, Power, Loader2, AlertCircle } from 'lucide-react';
 
 export default function AdminHub() {
   const [activeCount, setActiveCount] = useState(0);
+  const [isSameDayEnabled, setIsSameDayEnabled] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
-    const fetchActiveCount = async () => {
+    const fetchDashboardData = async () => {
+      // Fetch Active Orders Count
       const { count } = await supabase
         .from('orders')
         .select('*', { count: 'exact', head: true })
         .eq('is_archived', false);
       
       if (count) setActiveCount(count);
+
+      // Fetch Global Store Settings
+      const { data } = await supabase
+        .from('store_settings')
+        .select('same_day_enabled')
+        .eq('id', 'default')
+        .single();
+
+      if (data) setIsSameDayEnabled(data.same_day_enabled);
     };
-    fetchActiveCount();
+    fetchDashboardData();
   }, []);
+
+  const toggleSameDayFulfillment = async () => {
+    setIsUpdating(true);
+    const newValue = !isSameDayEnabled;
+    
+    try {
+      const { error } = await supabase
+        .from('store_settings')
+        .update({ same_day_enabled: newValue })
+        .eq('id', 'default');
+
+      if (error) throw error;
+      setIsSameDayEnabled(newValue);
+    } catch (error) {
+      alert("Failed to update store settings. Ensure you are logged in as an Admin.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-10 pb-20 font-sans px-4 pt-8">
@@ -27,13 +58,56 @@ export default function AdminHub() {
       <div className="bg-gray-900 rounded-[2.5rem] p-10 md:p-16 text-white shadow-xl relative overflow-hidden">
         <div className="relative z-10">
           <span className="text-amber-400 font-black tracking-widest uppercase text-xs mb-2 block">Command Center</span>
-         <h1 className="text-4xl md:text-5xl font-black mb-4">Welcome, Admin.</h1>
+          <h1 className="text-4xl md:text-5xl font-black mb-4">Welcome, Admin.</h1>
           <p className="text-gray-400 font-medium text-lg max-w-xl">What would you like to manage today? Select an option below to access your bakery tools.</p>
         </div>
         <Store className="absolute -bottom-10 -right-10 w-64 h-64 text-gray-800 opacity-50 pointer-events-none" />
       </div>
 
-      {/* The 4 Main Options (Changed to a 2x2 Grid) */}
+      {/* NEW: Store Controls Section */}
+      <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-gray-100 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 p-6 rounded-2xl border-2 border-gray-50 bg-gray-50/50">
+          <div>
+            <h3 className="font-bold text-gray-900 mb-1 flex items-center gap-2">
+              Store Capacity: Same-Day Orders
+            </h3>
+            <p className="text-sm text-gray-500 max-w-xl">
+              Toggle this off during high-volume periods to prevent overwhelming the kitchen. Customers will only be able to schedule future orders.
+            </p>
+          </div>
+          
+          <button
+            onClick={toggleSameDayFulfillment}
+            disabled={isUpdating}
+            className={`relative inline-flex h-12 w-24 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-4 focus:ring-amber-500/30 disabled:opacity-50 ${
+              isSameDayEnabled ? 'bg-green-500' : 'bg-gray-300'
+            }`}
+          >
+            <span className="sr-only">Toggle Same-Day Fulfillment</span>
+            <span
+              className={`absolute flex items-center justify-center h-10 w-10 transform rounded-full bg-white shadow-sm ring-1 ring-gray-900/5 transition duration-200 ease-in-out ${
+                isSameDayEnabled ? 'translate-x-6' : '-translate-x-6'
+              }`}
+            >
+              {isUpdating ? (
+                <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+              ) : (
+                <Power className={`h-4 w-4 ${isSameDayEnabled ? 'text-green-500' : 'text-gray-400'}`} />
+              )}
+            </span>
+          </button>
+        </div>
+        {!isSameDayEnabled && (
+          <div className="mt-4 flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-sm font-bold text-amber-800">
+              Same-day ordering is currently disabled across the entire storefront.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* The 4 Main Options (Restored 2x2 Grid) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* Option 1: Live Tracking */}

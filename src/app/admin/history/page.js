@@ -33,7 +33,7 @@ export default function AdminHistory() {
       .range(range.from, range.to);
 
     if (search) {
-      query = query.or(`id.ilike.%${search}%,customer_name.ilike.%${search}%,phone_number.ilike.%${search}%`);
+      query = query.or(`order_number.ilike.%${search}%,customer_name.ilike.%${search}%,phone_number.ilike.%${search}%`);
     }
 
     if (status === 'completed') {
@@ -49,7 +49,11 @@ export default function AdminHistory() {
       query = query.lte('created_at', `${end}T23:59:59Z`);
     }
 
-    const { data, count } = await query;
+    const { data, count, error } = await query;
+
+    if (error) {
+      console.error("Error fetching order history:", error.message);
+    }
 
     if (data) {
       setHistory(prev => append ? [...prev, ...data] : data);
@@ -71,7 +75,7 @@ export default function AdminHistory() {
   };
 
   const validOrders = history.filter(order => order.status !== 'Cancelled');
-  const totalRevenue = validOrders.reduce((sum, order) => sum + Number(order.total_amount), 0);
+  const totalRevenue = validOrders.reduce((sum, order) => sum + (Number(order.total_amount) || 0), 0);
 
   return (
     <div className="space-y-6 pb-20 font-sans max-w-7xl mx-auto px-4 py-8">
@@ -206,7 +210,7 @@ export default function AdminHistory() {
                       className={`hover:bg-amber-50 hover:shadow-sm transition-all duration-200 cursor-pointer group ${isCancelled ? 'opacity-70 bg-gray-50/50' : ''}`}
                     >
                       <td className={`px-6 py-5 font-mono text-xs font-bold ${isCancelled ? 'text-gray-400' : 'text-gray-500 group-hover:text-amber-700'}`}>
-                        #{order.id.slice(0, 8)}
+                        {order.order_number || 'N/A'}
                       </td>
                       <td className="px-6 py-5">
                         <p className={`text-sm font-black ${isCancelled ? 'text-gray-500' : 'text-gray-900'}`}>{order.customer_name}</p>
@@ -218,7 +222,7 @@ export default function AdminHistory() {
                         {new Date(order.created_at).toLocaleDateString()}
                       </td>
                       <td className={`px-6 py-5 font-black text-lg ${isCancelled ? 'text-gray-400 line-through' : 'text-amber-600'}`}>
-                        ${Number(order.total_amount).toFixed(2)}
+                        ${(Number(order.total_amount) || 0).toFixed(2)}
                       </td>
                       <td className="px-6 py-5">
                         {isCancelled ? (
@@ -268,7 +272,7 @@ export default function AdminHistory() {
                 {selectedOrder.status === 'Cancelled' ? 'Cancelled Record' : 'Archived Record'}
               </span>
               <h3 className="text-3xl font-black text-gray-900 mt-1">{selectedOrder.customer_name}</h3>
-              <p className="text-xs font-mono text-gray-400 mt-1">Order ID: #{selectedOrder.id}</p>
+              <p className="text-xs font-mono text-gray-400 mt-1">Order ID: {selectedOrder.order_number || 'N/A'}</p>
             </div>
 
             <div className="space-y-6">
@@ -298,7 +302,9 @@ export default function AdminHistory() {
                   {selectedOrder.items.map((item, i) => (
                     <div key={i} className="flex justify-between items-center">
                       <p className={`text-sm font-bold ${selectedOrder.status === 'Cancelled' ? 'text-gray-500 line-through' : 'text-gray-700'}`}>{item.quantity}x {item.name}</p>
-                      <p className={`text-sm font-black ${selectedOrder.status === 'Cancelled' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>${(item.price * item.quantity).toFixed(2)}</p>
+                      <p className={`text-sm font-black ${selectedOrder.status === 'Cancelled' ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                        ${((Number(item.price) || 0) * (Number(item.quantity) || 0)).toFixed(2)}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -312,7 +318,7 @@ export default function AdminHistory() {
                 <div className="text-right">
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Grand Total</p>
                   <p className={`text-3xl font-black leading-none ${selectedOrder.status === 'Cancelled' ? 'text-red-500 line-through' : 'text-amber-600'}`}>
-                    ${Number(selectedOrder.total_amount).toFixed(2)}
+                    ${(Number(selectedOrder.total_amount) || 0).toFixed(2)}
                   </p>
                 </div>
               </div>

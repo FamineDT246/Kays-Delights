@@ -224,7 +224,7 @@ export default function Account() {
               <div key={order.id} className="bg-white border border-gray-100 rounded-[2rem] p-6 md:p-8 shadow-sm">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 md:mb-8">
                   <div>
-                    <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Order #{order.id.split('-')[0]}</p>
+                    <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Order #{order.order_number}</p>
                     <p className="text-lg font-black text-gray-900">${Number(order.total_amount).toFixed(2)}</p>
                   </div>
                   <span className="bg-amber-50 text-amber-600 font-black text-xs px-4 py-2 rounded-full uppercase tracking-widest w-max">

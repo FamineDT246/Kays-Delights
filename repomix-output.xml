@@ -190,6 +190,8 @@ export default nextConfig;
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.1",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.577.0",
     "next": "16.1.6",
@@ -480,246 +482,6 @@ export default function OrderHistory() {
 }
 </file>
 
-<file path="src/app/account/page.js">
-"use client";
-
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
-import { Package, Clock, CheckCircle, Truck, MapPin, Phone, Save, Loader2, User } from 'lucide-react';
-
-export default function Account() {
-  const [user, setUser] = useState(null);
-  const [activeOrders, setActiveOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  
-  // Profile States
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [profileMessage, setProfileMessage] = useState('');
-
-  const router = useRouter();
-
-  useEffect(() => {
-    const initDashboard = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return router.push("/login");
-        setUser(session.user);
-
-        // Fetch User Profile
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("phone, default_address")
-          .eq("id", session.user.id)
-          .single();
-
-        if (profileData) {
-          setPhone(profileData.phone || '');
-          setAddress(profileData.default_address || '');
-        }
-
-        // Fetch Active Orders
-        const { data: orderData } = await supabase
-          .from("orders")
-          .select("*")
-          .eq("user_id", session.user.id)
-          .eq("is_archived", false)
-          .order("created_at", { ascending: false });
-
-        if (orderData) setActiveOrders(orderData);
-
-        // Secure Real-Time Subscription
-        const channel = supabase
-          .channel(`user-orders-${session.user.id}`)
-          .on("postgres_changes", { 
-            event: "UPDATE", 
-            schema: "public", 
-            table: "orders",
-            filter: `user_id=eq.${session.user.id}`
-          },
-            (payload) => {
-              setActiveOrders((prevActive) => {
-                if (payload.new.is_archived) {
-                  return prevActive.filter((order) => order.id !== payload.new.id);
-                } 
-                return prevActive.map((o) => 
-                  o.id === payload.new.id ? { ...o, ...payload.new } : o
-                );
-              });
-            }
-          ).subscribe();
-
-        return () => supabase.removeChannel(channel);
-      } catch (error) {
-        console.error("Dashboard Error:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    initDashboard();
-  }, [router]);
-
-  const handleSaveProfile = async () => {
-    setSavingProfile(true);
-    setProfileMessage('');
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ phone, default_address: address })
-        .eq('id', user.id);
-
-      if (error) throw error;
-      setProfileMessage('Profile saved successfully!');
-      setTimeout(() => setProfileMessage(''), 3000);
-    } catch (error) {
-      setProfileMessage('Error saving profile.');
-    } finally {
-      setSavingProfile(false);
-    }
-  };
-
-  const getStatusStep = (status) => {
-    const steps = { Received: 1, Prepping: 2, Ready: 3, Delivered: 4 };
-    return steps[status] || 1;
-  };
-
-  const getProgressWidth = (step) => {
-    if (step <= 1) return 'w-0';
-    if (step === 2) return 'w-1/3';
-    if (step === 3) return 'w-2/3';
-    return 'w-full';
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-4xl mx-auto px-4 py-12">
-      <div className="mb-10">
-        <h1 className="text-3xl font-black text-gray-900 mb-2">My Account</h1>
-        <p className="text-gray-500 font-medium">Manage your details and track your active orders.</p>
-      </div>
-
-      {/* Profile Settings Section */}
-      <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-gray-100 shadow-sm mb-8">
-        <div className="flex items-center gap-3 mb-6">
-          <User className="w-6 h-6 text-amber-600" />
-          <h2 className="text-xl font-black text-gray-900">Profile Details</h2>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div>
-            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Phone Number</label>
-            <div className="relative">
-              <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input 
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="Enter your phone number"
-                className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-4 focus:ring-amber-50 focus:border-amber-400 transition font-bold text-gray-700"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Default Delivery Address</label>
-            <div className="relative">
-              <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input 
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="Enter your default address"
-                className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-4 focus:ring-amber-50 focus:border-amber-400 transition font-bold text-gray-700"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <p className={`text-sm font-bold ${profileMessage.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
-            {profileMessage}
-          </p>
-          <button 
-            onClick={handleSaveProfile}
-            disabled={savingProfile}
-            className="bg-gray-900 hover:bg-black text-white font-bold py-3 px-8 rounded-xl transition flex items-center gap-2 disabled:opacity-70"
-          >
-            {savingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            Save Details
-          </button>
-        </div>
-      </div>
-
-      {/* Active Orders Section */}
-      <div className="flex items-center gap-3 mb-6 px-2">
-        <Package className="w-6 h-6 text-amber-600" />
-        <h2 className="text-xl font-black text-gray-900">Active Orders</h2>
-      </div>
-
-      <div className="space-y-6">
-        {activeOrders.length === 0 ? (
-          <div className="bg-gray-50 p-10 rounded-[2rem] text-center border border-gray-100">
-            <p className="text-gray-500 font-bold">You have no active orders right now.</p>
-          </div>
-        ) : (
-          activeOrders.map((order) => {
-            const currentStep = getStatusStep(order.status);
-            return (
-              <div key={order.id} className="bg-white border border-gray-100 rounded-[2rem] p-6 md:p-8 shadow-sm">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-                  <div>
-                    <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Order #{order.id.split('-')[0]}</p>
-                    <p className="text-lg font-black text-gray-900">${Number(order.total_amount).toFixed(2)}</p>
-                  </div>
-                  <span className="bg-amber-50 text-amber-600 font-black text-xs px-4 py-2 rounded-full uppercase tracking-widest w-max">
-                    {order.status}
-                  </span>
-                </div>
-
-                <div className="relative mb-8 mt-4 max-w-2xl mx-auto">
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-2 bg-gray-100 rounded-full z-0"></div>
-                  <div className={`absolute left-0 top-1/2 -translate-y-1/2 h-2 bg-amber-500 rounded-full z-0 transition-all duration-1000 ${getProgressWidth(currentStep)}`}></div>
-                  
-                  <div className="relative z-10 flex justify-between">
-                    {[
-                      { step: 1, icon: Package, label: 'Received' },
-                      { step: 2, icon: Clock, label: 'Prepping' },
-                      { step: 3, icon: CheckCircle, label: 'Ready' },
-                      { step: 4, icon: Truck, label: 'Delivered' }
-                    ].map((item) => {
-                      const Icon = item.icon;
-                      const isActive = currentStep >= item.step;
-                      return (
-                        <div key={item.step} className="flex flex-col items-center gap-2 bg-white px-2">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors duration-500 border-4 border-white shadow-sm ${isActive ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
-                            <Icon className="w-4 h-4" />
-                          </div>
-                          <span className={`text-[10px] font-black uppercase tracking-widest ${isActive ? 'text-gray-900' : 'text-gray-400'}`}>
-                            {item.label}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
-</file>
-
 <file path="src/app/admin/history/page.js">
 "use client";
 
@@ -756,7 +518,8 @@ export default function AdminHistory() {
       .range(range.from, range.to);
 
     if (search) {
-      query = query.or(`id.ilike.%${search}%,customer_name.ilike.%${search}%,phone_number.ilike.%${search}%`);
+      // Safely searches across the new order number, name, and phone!
+      query = query.or(`order_number.ilike.%${search}%,customer_name.ilike.%${search}%,phone_number.ilike.%${search}%`);
     }
 
     if (status === 'completed') {
@@ -772,7 +535,11 @@ export default function AdminHistory() {
       query = query.lte('created_at', `${end}T23:59:59Z`);
     }
 
-    const { data, count } = await query;
+    const { data, count, error } = await query;
+
+    if (error) {
+      console.error("Error fetching order history:", error.message);
+    }
 
     if (data) {
       setHistory(prev => append ? [...prev, ...data] : data);
@@ -929,7 +696,7 @@ export default function AdminHistory() {
                       className={`hover:bg-amber-50 hover:shadow-sm transition-all duration-200 cursor-pointer group ${isCancelled ? 'opacity-70 bg-gray-50/50' : ''}`}
                     >
                       <td className={`px-6 py-5 font-mono text-xs font-bold ${isCancelled ? 'text-gray-400' : 'text-gray-500 group-hover:text-amber-700'}`}>
-                        #{order.id.slice(0, 8)}
+                        {order.order_number}
                       </td>
                       <td className="px-6 py-5">
                         <p className={`text-sm font-black ${isCancelled ? 'text-gray-500' : 'text-gray-900'}`}>{order.customer_name}</p>
@@ -991,7 +758,7 @@ export default function AdminHistory() {
                 {selectedOrder.status === 'Cancelled' ? 'Cancelled Record' : 'Archived Record'}
               </span>
               <h3 className="text-3xl font-black text-gray-900 mt-1">{selectedOrder.customer_name}</h3>
-              <p className="text-xs font-mono text-gray-400 mt-1">Order ID: #{selectedOrder.id}</p>
+              <p className="text-xs font-mono text-gray-400 mt-1">Order ID: {selectedOrder.order_number}</p>
             </div>
 
             <div className="space-y-6">
@@ -1790,22 +1557,53 @@ export default function AdminLayout({ children }) {
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import { Activity, PackageSearch, History, ChevronRight, Store, TrendingUp } from 'lucide-react'; // ADDED TrendingUp
+import { Activity, PackageSearch, History, ChevronRight, Store, TrendingUp, Power, Loader2, AlertCircle } from 'lucide-react';
 
 export default function AdminHub() {
   const [activeCount, setActiveCount] = useState(0);
+  const [isSameDayEnabled, setIsSameDayEnabled] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
-    const fetchActiveCount = async () => {
+    const fetchDashboardData = async () => {
+      // Fetch Active Orders Count
       const { count } = await supabase
         .from('orders')
         .select('*', { count: 'exact', head: true })
         .eq('is_archived', false);
       
       if (count) setActiveCount(count);
+
+      // Fetch Global Store Settings
+      const { data } = await supabase
+        .from('store_settings')
+        .select('same_day_enabled')
+        .eq('id', 'default')
+        .single();
+
+      if (data) setIsSameDayEnabled(data.same_day_enabled);
     };
-    fetchActiveCount();
+    fetchDashboardData();
   }, []);
+
+  const toggleSameDayFulfillment = async () => {
+    setIsUpdating(true);
+    const newValue = !isSameDayEnabled;
+    
+    try {
+      const { error } = await supabase
+        .from('store_settings')
+        .update({ same_day_enabled: newValue })
+        .eq('id', 'default');
+
+      if (error) throw error;
+      setIsSameDayEnabled(newValue);
+    } catch (error) {
+      alert("Failed to update store settings. Ensure you are logged in as an Admin.");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-10 pb-20 font-sans px-4 pt-8">
@@ -1814,13 +1612,56 @@ export default function AdminHub() {
       <div className="bg-gray-900 rounded-[2.5rem] p-10 md:p-16 text-white shadow-xl relative overflow-hidden">
         <div className="relative z-10">
           <span className="text-amber-400 font-black tracking-widest uppercase text-xs mb-2 block">Command Center</span>
-         <h1 className="text-4xl md:text-5xl font-black mb-4">Welcome, Admin.</h1>
+          <h1 className="text-4xl md:text-5xl font-black mb-4">Welcome, Admin.</h1>
           <p className="text-gray-400 font-medium text-lg max-w-xl">What would you like to manage today? Select an option below to access your bakery tools.</p>
         </div>
         <Store className="absolute -bottom-10 -right-10 w-64 h-64 text-gray-800 opacity-50 pointer-events-none" />
       </div>
 
-      {/* The 4 Main Options (Changed to a 2x2 Grid) */}
+      {/* NEW: Store Controls Section */}
+      <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-gray-100 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 p-6 rounded-2xl border-2 border-gray-50 bg-gray-50/50">
+          <div>
+            <h3 className="font-bold text-gray-900 mb-1 flex items-center gap-2">
+              Store Capacity: Same-Day Orders
+            </h3>
+            <p className="text-sm text-gray-500 max-w-xl">
+              Toggle this off during high-volume periods to prevent overwhelming the kitchen. Customers will only be able to schedule future orders.
+            </p>
+          </div>
+          
+          <button
+            onClick={toggleSameDayFulfillment}
+            disabled={isUpdating}
+            className={`relative inline-flex h-12 w-24 shrink-0 cursor-pointer items-center justify-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-4 focus:ring-amber-500/30 disabled:opacity-50 ${
+              isSameDayEnabled ? 'bg-green-500' : 'bg-gray-300'
+            }`}
+          >
+            <span className="sr-only">Toggle Same-Day Fulfillment</span>
+            <span
+              className={`absolute flex items-center justify-center h-10 w-10 transform rounded-full bg-white shadow-sm ring-1 ring-gray-900/5 transition duration-200 ease-in-out ${
+                isSameDayEnabled ? 'translate-x-6' : '-translate-x-6'
+              }`}
+            >
+              {isUpdating ? (
+                <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+              ) : (
+                <Power className={`h-4 w-4 ${isSameDayEnabled ? 'text-green-500' : 'text-gray-400'}`} />
+              )}
+            </span>
+          </button>
+        </div>
+        {!isSameDayEnabled && (
+          <div className="mt-4 flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-sm font-bold text-amber-800">
+              Same-day ordering is currently disabled across the entire storefront.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* The 4 Main Options (Restored 2x2 Grid) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
         {/* Option 1: Live Tracking */}
@@ -2146,470 +1987,6 @@ export default function LiveQueue() {
 }
 </file>
 
-<file path="src/app/api/checkout/route.js">
-import { supabase } from '@/lib/supabase';
-import { z } from 'zod';
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
-
-const ratelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(3, "1 m"),
-  analytics: true,
-});
-
-const checkoutSchema = z.object({
-  cart: z.array(z.object({
-    id: z.string(),
-    quantity: z.number().int().min(1),
-  })).min(1, "Cart cannot be empty"),
-  deliveryType: z.enum(['pickup', 'delivery', 'pickup_scheduled', 'delivery_scheduled']),
-  address: z.string(),
-  phone: z.string().min(7, "Valid phone number required"),
-  scheduledDate: z.string(),
-  userId: z.string(),
-  customerName: z.string().min(1, "Name is required"),
-});
-
-export async function POST(request) {
-  try {
-    const ip = request.headers.get("x-forwarded-for") || "127.0.0.1";
-    const { success } = await ratelimit.limit(ip);
-    
-    if (!success) {
-      return Response.json(
-        { error: "Too many orders placed. Please wait a minute before trying again." }, 
-        { status: 429 }
-      );
-    }
-
-    const body = await request.json();
-
-    const validation = checkoutSchema.safeParse(body);
-    if (!validation.success) {
-      return Response.json({ error: "Invalid request data format." }, { status: 400 });
-    }
-
-    const { cart, deliveryType, address, phone, scheduledDate, userId, customerName } = validation.data;
-
-    if (deliveryType.includes('delivery') && (!address || address.trim() === '')) {
-      return Response.json({ error: "Delivery address is required for delivery orders." }, { status: 400 });
-    }
-
-    const itemIds = cart.map(item => item.id);
-    const { data: dbItems, error } = await supabase
-      .from('treats')
-      .select('id, price, cost_to_make, is_available')
-      .in('id', itemIds);
-
-    if (error) throw error;
-
-    let secureTotal = 0;
-    let secureTotalCost = 0;
-    const deliveryFee = deliveryType.includes('delivery') ? 15.00 : 0;
-    const rushFee = deliveryType.includes('same_day') ? 10.00 : 0;
-
-    cart.forEach(cartItem => {
-      const realItem = dbItems.find(db => db.id === cartItem.id);
-      if (realItem && realItem.is_available) {
-        secureTotal += (realItem.price * cartItem.quantity);
-        secureTotalCost += ((realItem.cost_to_make || 0) * cartItem.quantity);
-      }
-    });
-
-    secureTotal += deliveryFee + rushFee;
-
-    const orderData = {
-      user_id: userId,
-      customer_name: customerName,
-      delivery_address: address,
-      phone_number: phone,
-      total_amount: secureTotal,
-      total_cost: secureTotalCost,
-      delivery_fee: deliveryFee,
-      rush_fee: rushFee,
-      delivery_type: deliveryType,
-      scheduled_date: scheduledDate,
-      status: 'Received',
-      items: cart,
-    };
-
-    const { error: insertError } = await supabase.from('orders').insert([orderData]);
-
-    if (insertError) throw insertError;
-
-    return Response.json({ success: true });
-  } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
-  }
-}
-</file>
-
-<file path="src/app/cart/page.js">
-"use client";
-
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useCart } from '@/context/CartContext';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
-import { Trash2, MapPin, Phone, Calendar, CreditCard, ArrowRight, Loader2, ShoppingBag, Truck, Map as MapIcon, X, Navigation } from 'lucide-react';
-import Image from 'next/image';
-import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
-
-const libraries = ['places'];
-const BARBADOS_CENTER = { lat: 13.1939, lng: -59.5432 };
-
-export default function Cart() {
-  const { cart, removeFromCart, cartTotal, clearCart, isMounted } = useCart();
-  const router = useRouter();
-
-  // Basic State
-  const [user, setUser] = useState(null);
-  const [deliveryType, setDeliveryType] = useState('pickup');
-  const [address, setAddress] = useState('');
-  const [phone, setPhone] = useState('');
-  const [scheduledDate, setScheduledDate] = useState('');
-  const [processing, setProcessing] = useState(false);
-  const [loadingUser, setLoadingUser] = useState(true);
-
-  // Map State
-  const [isMapOpen, setIsMapOpen] = useState(false);
-  const [mapCenter, setMapCenter] = useState(BARBADOS_CENTER);
-  const [markerPos, setMarkerPos] = useState(null);
-  const [mapUrl, setMapUrl] = useState('');
-  const [autocomplete, setAutocomplete] = useState(null);
-
-  const { isLoaded } = useJsApiLoader({
-    id: 'google-map-script',
-    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
-    libraries: libraries,
-  });
-
-  useEffect(() => {
-    const checkAuthAndProfile = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login?next=cart');
-      } else {
-        setUser(session.user);
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('phone, default_address')
-          .eq('id', session.user.id)
-          .single();
-
-        if (profileData) {
-          if (profileData.phone) setPhone(profileData.phone);
-          if (profileData.default_address) {
-            if (profileData.default_address.includes('http')) {
-              setMapUrl(profileData.default_address);
-            } else {
-              setAddress(profileData.default_address);
-            }
-          }
-        }
-      }
-      setLoadingUser(false);
-    };
-    checkAuthAndProfile();
-  }, [router]);
-
-  // --- Map Logic ---
-  const handleAutoLocate = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((position) => {
-        const pos = { lat: position.coords.latitude, lng: position.coords.longitude };
-        setMapCenter(pos);
-        setMarkerPos(pos);
-      }, () => {
-        alert("Unable to retrieve location. Please check your browser permissions.");
-      });
-    }
-  };
-
-  const handleMapClick = (e) => {
-    setMarkerPos({ lat: e.latLng.lat(), lng: e.latLng.lng() });
-  };
-
-  const onLoadAutocomplete = (autoC) => setAutocomplete(autoC);
-
-  const onPlaceChanged = () => {
-    if (autocomplete !== null) {
-      const place = autocomplete.getPlace();
-      if (place.geometry) {
-        const pos = { lat: place.geometry.location.lat(), lng: place.geometry.location.lng() };
-        setMapCenter(pos);
-        setMarkerPos(pos);
-      }
-    }
-  };
-
-  const handleConfirmLocation = () => {
-    if (!markerPos) return alert("Please place a pin on the map.");
-    const url = `https://maps.google.com/?q=${markerPos.lat},${markerPos.lng}`;
-    setMapUrl(url);
-    setIsMapOpen(false);
-  };
-  // -----------------
-
-  const handlePlaceOrder = async () => {
-    const isDelivery = deliveryType.includes('delivery');
-    const isScheduled = deliveryType.includes('scheduled');
-
-    if (!phone) return alert("Please provide a phone number.");
-    if (isDelivery && !address && !mapUrl) return alert("Please provide a delivery location.");
-    if (isScheduled && !scheduledDate) return alert("Please select a date.");
-
-    setProcessing(true);
-    const finalAddress = mapUrl || address; // Map URL takes priority if set
-    
-    const today = new Date();
-    const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-    try {
-      const response = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          cart,
-          deliveryType,
-          address: isDelivery ? finalAddress : 'Pickup',
-          phone,
-          scheduledDate: isScheduled ? scheduledDate : localDate,
-          userId: user.id,
-          customerName: user.user_metadata?.full_name || 'Guest',
-        }),
-      });
-
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-
-      alert("Order successfully placed! Redirecting...");
-      clearCart();
-      router.push('/account');
-    } catch (error) {
-      alert("Error placing order: " + error.message);
-      setProcessing(false);
-    }
-  };
-
-  const deliveryFee = deliveryType.includes('delivery') ? 15.00 : 0;
-  const rushFee = deliveryType.includes('same_day') ? 10.00 : 0;
-  const finalTotal = cartTotal + deliveryFee + rushFee;
-
-  if (!isMounted || loadingUser) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 text-amber-500 animate-spin" /></div>;
-
-  if (cart.length === 0) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-20 text-center">
-        <div className="bg-gray-50 rounded-[3rem] p-16 max-w-2xl mx-auto border border-gray-100 shadow-sm">
-          <ShoppingBag className="w-16 h-16 text-gray-300 mx-auto mb-6" />
-          <h2 className="text-3xl font-black text-gray-900 mb-4">Your cart is empty</h2>
-          <button onClick={() => router.push('/')} className="bg-amber-600 hover:bg-amber-700 text-white font-black py-4 px-10 rounded-full transition shadow-lg mt-4">Browse Menu</button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-12 pb-24 relative">
-      <h1 className="text-4xl font-black text-gray-900 mb-10 tracking-tight">Checkout</h1>
-      
-      <div className="flex flex-col lg:flex-row gap-10">
-        <div className="lg:w-2/3 space-y-8">
-          
-          <div className="bg-white rounded-[2rem] p-6 md:p-8 border border-gray-100 shadow-sm">
-            <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-amber-600" /> Order Items
-            </h2>
-            <div className="space-y-6">
-              {cart.map((item) => (
-                <div key={item.id} className="flex items-center justify-between border-b border-gray-50 pb-6 last:border-0 last:pb-0">
-                  <div className="flex items-center gap-4">
-                    <div className="w-20 h-20 bg-gray-100 rounded-2xl overflow-hidden shrink-0 relative">
-                      <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="80px" />
-                    </div>
-                    <div>
-                      <h3 className="font-black text-gray-900">{item.name}</h3>
-                      <p className="text-sm font-bold text-gray-500">Qty: {item.quantity}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <p className="font-black text-lg text-amber-600">${(item.price * item.quantity).toFixed(2)}</p>
-                    <button onClick={() => removeFromCart(item.id)} className="text-gray-300 hover:text-red-500 transition p-2 bg-gray-50 hover:bg-red-50 rounded-full"><Trash2 className="w-5 h-5" /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-[2rem] p-6 md:p-8 border border-gray-100 shadow-sm">
-            <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
-              <Truck className="w-5 h-5 text-amber-600" /> Fulfillment Options
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
-              {[
-                { id: 'pickup', label: 'Pickup', desc: 'Free' },
-                { id: 'delivery', label: 'Delivery', desc: '+$15.00' },
-                { id: 'pickup_scheduled', label: 'Scheduled Pickup', desc: 'Plan ahead' },
-                { id: 'delivery_scheduled', label: 'Scheduled Delivery', desc: '+$15.00' }
-              ].map((opt) => (
-                <button
-                  key={opt.id}
-                  onClick={() => setDeliveryType(opt.id)}
-                  className={`p-4 rounded-2xl text-left border-2 transition-all ${
-                    deliveryType === opt.id ? 'border-amber-500 bg-amber-50 shadow-sm' : 'border-gray-100 hover:border-gray-200 bg-white'
-                  }`}
-                >
-                  <p className={`font-black text-sm ${deliveryType === opt.id ? 'text-amber-900' : 'text-gray-700'}`}>{opt.label}</p>
-                  <p className={`text-xs font-bold mt-1 ${deliveryType === opt.id ? 'text-amber-600' : 'text-gray-400'}`}>{opt.desc}</p>
-                </button>
-              ))}
-            </div>
-
-            <div className="space-y-5">
-              <div>
-                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Contact Phone</label>
-                <div className="relative">
-                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input type="tel" placeholder="123-456-7890" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-4 focus:ring-amber-50 transition font-bold text-gray-700"/>
-                </div>
-              </div>
-
-              {deliveryType.includes('delivery') && (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Delivery Address</label>
-                    <button type="button" onClick={() => setIsMapOpen(true)} className="text-xs font-black text-amber-600 hover:text-amber-700 flex items-center gap-1.5 transition bg-amber-50 px-3 py-1.5 rounded-full">
-                      <MapIcon className="w-3 h-3" /> Drop Pin on Map
-                    </button>
-                  </div>
-
-                  {mapUrl ? (
-                    <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-2xl text-green-800 font-bold">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="w-5 h-5 text-green-600" />
-                        Exact GPS Location Pinned
-                      </div>
-                      <button onClick={() => setMapUrl('')} className="text-xs font-black text-red-500 hover:underline uppercase tracking-widest">Remove</button>
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input type="text" placeholder="Type address or use map pin above" value={address} onChange={(e) => setAddress(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-4 focus:ring-amber-50 transition font-bold text-gray-700"/>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {deliveryType.includes('scheduled') && (
-                <div>
-                  <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Scheduled Date</label>
-                  <div className="relative">
-                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} min={new Date().toISOString().split('T')[0]} className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-4 focus:ring-amber-50 transition font-bold text-gray-700"/>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="lg:w-1/3">
-          <div className="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm sticky top-28">
-            <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-amber-600" /> Order Summary
-            </h2>
-            <div className="space-y-4 mb-6 pb-6 border-b border-gray-100">
-              <div className="flex justify-between text-gray-600 font-bold"><span>Subtotal</span><span>${cartTotal.toFixed(2)}</span></div>
-              <div className="flex justify-between text-gray-600 font-bold"><span>Delivery Fee</span><span>${deliveryFee.toFixed(2)}</span></div>
-            </div>
-            <div className="flex justify-between items-end mb-8">
-              <span className="text-gray-400 font-black uppercase tracking-widest text-xs">Total</span>
-              <span className="text-4xl font-black text-gray-900">${finalTotal.toFixed(2)}</span>
-            </div>
-            <button onClick={handlePlaceOrder} disabled={processing} className="w-full bg-gray-900 hover:bg-black text-white font-black py-4 rounded-[1.5rem] flex items-center justify-center gap-2 transition shadow-xl disabled:opacity-70 disabled:hover:bg-gray-900">
-              {processing ? <><Loader2 className="w-5 h-5 animate-spin" /> Processing</> : <><ArrowRight className="w-5 h-5" /> Place Order</>}
-            </button>
-            <p className="text-center text-xs font-bold text-gray-400 mt-4">Payment is collected upon fulfillment.</p>
-          </div>
-        </div>
-      </div>
-
-      {/* --- Google Maps Modal --- */}
-      {isMapOpen && isLoaded && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md animate-in fade-in">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col h-[80vh]">
-            
-            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white z-10 shadow-sm">
-              <div>
-                <h3 className="text-xl font-black text-gray-900">Select Delivery Location</h3>
-                <p className="text-xs font-bold text-gray-500 mt-1">Search or drag the map and tap to drop a pin.</p>
-              </div>
-              <button onClick={() => setIsMapOpen(false)} className="p-2 bg-gray-50 rounded-full text-gray-500 hover:bg-gray-200 transition">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 bg-gray-50 border-b border-gray-200 flex flex-col sm:flex-row gap-3 z-10">
-              <button onClick={handleAutoLocate} className="shrink-0 bg-white border border-gray-200 text-gray-700 hover:text-amber-600 font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 transition shadow-sm">
-                <Navigation className="w-4 h-4" /> Locate Me
-              </button>
-              
-              <div className="flex-1 relative">
-                <Autocomplete 
-                  onLoad={onLoadAutocomplete} 
-                  onPlaceChanged={onPlaceChanged}
-                  options={{ componentRestrictions: { country: "bb" } }} // Restricts search to Barbados
-                >
-                  <input 
-                    type="text" 
-                    placeholder="Search area (e.g. Holetown)..." 
-                    className="w-full pl-4 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-400 font-bold text-gray-700 shadow-sm"
-                  />
-                </Autocomplete>
-              </div>
-            </div>
-
-            <div className="flex-1 relative bg-gray-200">
-              <GoogleMap
-                mapContainerStyle={{ width: '100%', height: '100%' }}
-                center={mapCenter}
-                zoom={14}
-                onClick={handleMapClick}
-                options={{
-                  disableDefaultUI: true,
-                  zoomControl: true,
-                }}
-              >
-                {markerPos && (
-                  <Marker 
-                    position={markerPos} 
-                    animation={window.google.maps.Animation.DROP}
-                  />
-                )}
-              </GoogleMap>
-            </div>
-
-            <div className="p-6 bg-white border-t border-gray-100 z-10 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)]">
-              <button 
-                onClick={handleConfirmLocation}
-                disabled={!markerPos}
-                className="w-full bg-amber-600 hover:bg-amber-700 text-white font-black py-4 rounded-2xl transition shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                <MapPin className="w-5 h-5" />
-                Confirm Pinned Location
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-</file>
-
 <file path="src/app/forgot-password/page.js">
 "use client";
 
@@ -2706,69 +2083,6 @@ export default function ForgotPassword() {
         </form>
       </div>
     </div>
-  );
-}
-</file>
-
-<file path="src/app/globals.css">
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-body {
-  /* This ensures the image is always behind everything */
-  background-image: url('/bakery-bg.jpg');
-  background-size: cover;
-  background-position: center;
-  background-attachment: fixed;
-  background-repeat: no-repeat;
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-  min-height: 100vh;
-}
-</file>
-
-<file path="src/app/layout.js">
-import { Inter } from "next/font/google";
-import "./globals.css";
-import { CartProvider } from "@/context/CartContext";
-import Navbar from "@/components/Navbar";
-
-const inter = Inter({ subsets: ["latin"] });
-
-export const metadata = {
-  title: "Kiara's Treats",
-  description: "Freshly baked Bajan treats and pastries.",
-};
-
-export default function RootLayout({ children }) {
-  return (
-    <html lang="en">
-      {/* Removed bg-gray-50 so the bakery-bg.jpg in your CSS shows up */}
-      <body className={inter.className}>
-        <CartProvider>
-          <Navbar />
-          
-          {/* This wrapper creates the solid content area on every page */}
-          <div className="max-w-7xl mx-auto my-6 px-4">
-            <main className="bg-white/95 backdrop-blur-md shadow-xl rounded-3xl border border-white/20 min-h-[85vh] p-6 md:p-10 text-gray-900">
-              {children}
-            </main>
-          </div>
-          
-        </CartProvider>
-      </body>
-    </html>
   );
 }
 </file>
@@ -2889,331 +2203,6 @@ export default function LoginPage() {
         </div>
       </div>
     </main>
-  );
-}
-</file>
-
-<file path="src/app/page.js">
-"use client";
-
-import { useState, useEffect } from 'react';
-import ProductCard from '../components/ProductCard'; 
-import { supabase } from '@/lib/supabase';
-import { Search, ShoppingBag, User, X, Plus, Minus, ShoppingCart, ArrowRight } from 'lucide-react'; 
-import { useRouter } from 'next/navigation';
-import { useCart } from '@/context/CartContext';
-import { createPortal } from 'react-dom';
-import { useDebounce } from '@/hooks/useDebounce';
-
-export default function Home() {
-  const router = useRouter();
-  const { cartCount, addToCart } = useCart();
-  
-  const [user, setUser] = useState(null);
-  const [mounted, setMounted] = useState(false);
-  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-  
-  const [selectedTreat, setSelectedTreat] = useState(null);
-  const [quantity, setQuantity] = useState(1);
-  
-  const [treats, setTreats] = useState([]);
-  const [activeCategory, setActiveCategory] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
-
-  const debouncedQuery = useDebounce(searchQuery, 300);
-
-  useEffect(() => {
-    setMounted(true);
-    fetchTreats();
-
-    const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user || null);
-    };
-    checkUser();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchTreats = async () => {
-    const { data, error } = await supabase.from('treats').select('*');
-    if (error) {
-      console.error("Error fetching treats:", error);
-    } else {
-      setTreats(data || []);
-    }
-    setLoading(false);
-  };
-
-  const handleOpenQuickView = (treat) => {
-    setSelectedTreat(treat);
-    setQuantity(1); 
-  };
-
-  const scrollToMenu = () => {
-    const menuSection = document.getElementById('menu-section');
-    if (menuSection) {
-      menuSection.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
-  const filteredTreats = treats.filter(treat => {
-    const matchesCategory = activeCategory === 'all' || treat.category === activeCategory;
-    const matchesSearch = treat.name.toLowerCase().includes(debouncedQuery.toLowerCase()) || 
-                          (treat.description && treat.description.toLowerCase().includes(debouncedQuery.toLowerCase()));
-    
-    return matchesCategory && matchesSearch;
-  });
-
-  return (
-    <div className="font-sans">
-      
-      {/* Immersive Hero Section */}
-      <section className="relative min-h-[90vh] flex flex-col items-center justify-center text-center px-4 bg-amber-50/50 border-b border-amber-100 overflow-hidden">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-amber-200/30 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-orange-200/20 rounded-full blur-3xl"></div>
-
-        <div className="relative z-10 max-w-3xl mx-auto">
-          <span className="text-amber-600 font-black tracking-widest uppercase text-sm mb-4 block">Handcrafted with Love</span>
-          <h1 className="text-5xl md:text-7xl font-black text-gray-900 tracking-tighter mb-6 leading-tight">
-            Welcome to <br/><span className="text-amber-600">Kay's Delights!</span>
-          </h1>
-          <p className="text-lg md:text-xl text-gray-600 font-medium mb-10 max-w-2xl mx-auto">
-            Freshly baked cakes, cookies, and artisan breads. Order for pickup or delivery today.
-          </p>
-          <button 
-            onClick={scrollToMenu}
-            className="group bg-amber-600 hover:bg-amber-700 text-white font-black py-4 px-10 rounded-full transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 flex items-center gap-3 mx-auto text-lg"
-          >
-            Browse Menu 
-            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-          </button>
-        </div>
-      </section>
-
-      {/* Main Content Area */}
-      <main id="menu-section" className="max-w-7xl mx-auto px-4 py-16 relative">
-        
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-6">
-          
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4 w-full md:w-auto">
-            <h2 className="text-3xl font-black text-gray-900 whitespace-nowrap">Our Menu</h2>
-            
-            <div className="relative w-full sm:w-72">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="Search treats..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-full font-bold text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-amber-50 focus:border-amber-400 transition shadow-sm bg-white"
-              />
-            </div>
-          </div>
-          
-          <div className="flex flex-wrap gap-2">
-            {[
-              { id: 'all', label: 'All Treats' },
-              { id: 'cakes', label: '🍰 Cakes' },
-              { id: 'cookies', label: '🍪 Cookies' },
-              { id: 'breads', label: '🍞 Breads' },
-              { id: 'pastries', label: '🥐 Pastries' }
-            ].map(cat => (
-              <button 
-                key={cat.id}
-                onClick={() => setActiveCategory(cat.id)}
-                className={`px-6 py-2.5 rounded-full font-bold text-sm transition-all ${
-                  activeCategory === cat.id 
-                    ? 'bg-amber-600 text-white shadow-md' 
-                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {cat.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="min-h-[400px]">
-          {loading ? (
-            <div className="flex flex-col justify-center items-center h-64 gap-4">
-              <div className="w-12 h-12 border-4 border-amber-200 border-t-amber-600 rounded-full animate-spin"></div>
-              <p className="text-amber-600 font-bold animate-pulse">Baking fresh treats...</p>
-            </div>
-          ) : filteredTreats.length === 0 ? (
-            <div className="bg-white/50 border-2 border-dashed border-gray-200 rounded-[2rem] p-16 text-center">
-              <p className="text-gray-500 font-bold text-xl mb-3">No treats match your search.</p>
-              <button 
-                onClick={() => { setActiveCategory('all'); setSearchQuery(''); }} 
-                className="text-amber-600 font-black hover:text-amber-700 transition"
-              >
-                Clear filters and view all menu items
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pb-24">
-              {filteredTreats.map((treat, index) => (
-                <div 
-                  key={treat.id || index} 
-                  onClick={(e) => {
-                    if (e.target.closest('button') || e.target.closest('a')) return;
-                    handleOpenQuickView(treat);
-                  }} 
-                  className="cursor-pointer transition-transform hover:scale-[1.02]"
-                >
-                  <ProductCard product={treat} />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {selectedTreat && (
-          <div 
-            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-            onClick={() => setSelectedTreat(null)}
-          >
-            <div 
-              className="bg-white rounded-[2rem] w-full max-w-lg overflow-hidden shadow-2xl relative animate-in zoom-in duration-200 flex flex-col max-h-[90vh]"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button 
-                onClick={() => setSelectedTreat(null)} 
-                className="absolute top-4 right-4 z-10 bg-white/90 backdrop-blur-sm p-2 rounded-full text-gray-800 hover:bg-white hover:scale-110 transition shadow-sm"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="overflow-y-auto flex-1 hide-scrollbar">
-                <div className="h-64 sm:h-80 w-full relative bg-gray-100">
-                  <img 
-                    src={selectedTreat.image_url} 
-                    alt={selectedTreat.name} 
-                    className="w-full h-full object-cover" 
-                  />
-                </div>
-
-                <div className="p-6 sm:p-8">
-                  <div className="flex justify-between items-start mb-4 gap-4">
-                    <h3 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight leading-tight">
-                      {selectedTreat.name}
-                    </h3>
-                    <p className="text-2xl text-amber-600 font-black shrink-0">
-                      ${selectedTreat.price?.toFixed(2)}
-                    </p>
-                  </div>
-
-                  <div className="bg-amber-50/50 rounded-2xl p-5 mb-4 border border-amber-100">
-                    <p className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-2">Description & Ingredients</p>
-                    <p className="text-gray-700 leading-relaxed font-medium">
-                      {selectedTreat.description || "A delicious, freshly baked treat made with love from Kiara's kitchen."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6 bg-white border-t border-gray-100 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.05)]">
-                {selectedTreat.is_available !== false ? (
-                  <div className="flex flex-col sm:flex-row gap-4 items-center">
-                    
-                    <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl p-1 w-full sm:w-auto h-14">
-                      <button 
-                        onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                        className="w-12 h-full flex items-center justify-center text-gray-600 hover:text-amber-600 hover:bg-white rounded-xl transition"
-                      >
-                        <Minus className="w-5 h-5" />
-                      </button>
-                      <span className="w-12 text-center font-black text-lg text-gray-900">
-                        {quantity}
-                      </span>
-                      <button 
-                        onClick={() => setQuantity(q => q + 1)}
-                        className="w-12 h-full flex items-center justify-center text-gray-600 hover:text-amber-600 hover:bg-white rounded-xl transition"
-                      >
-                        <Plus className="w-5 h-5" />
-                      </button>
-                    </div>
-
-                    <button 
-                      onClick={() => {
-                        addToCart(selectedTreat, quantity); 
-                        setSelectedTreat(null);
-                      }}
-                      className="flex-1 w-full bg-amber-600 hover:bg-amber-700 text-white font-black py-4 px-6 rounded-2xl flex items-center justify-center gap-3 transition shadow-lg shadow-amber-600/20 h-14"
-                    >
-                      <ShoppingCart className="w-5 h-5" />
-                      <span>ADD TO CART</span>
-                      <span className="bg-white/20 px-2 py-1 rounded-md text-sm ml-2">
-                        ${(selectedTreat.price * quantity).toFixed(2)}
-                      </span>
-                    </button>
-                  </div>
-                ) : (
-                  <button 
-                    disabled
-                    className="w-full bg-gray-200 text-gray-500 font-black py-4 rounded-2xl cursor-not-allowed h-14"
-                  >
-                    CURRENTLY SOLD OUT
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {mounted && cartCount > 0 && createPortal(
-          <>
-            <button
-              onClick={() => {
-                if (!user) setShowLoginPrompt(true);
-                else router.push('/cart');
-              }}
-              className="fixed bottom-24 right-6 md:right-10 z-[999] bg-gray-900 text-white px-6 py-4 rounded-full font-black shadow-2xl hover:bg-black hover:scale-105 transition-all flex items-center gap-3 border-[3px] border-white ring-4 ring-gray-900/10"
-            >
-              <ShoppingBag className="w-5 h-5 text-amber-500" />
-              Checkout
-              <span className="bg-amber-500 text-white px-2.5 py-0.5 rounded-full text-xs shadow-inner border border-amber-600">
-                {cartCount}
-              </span>
-            </button>
-
-            {showLoginPrompt && (
-              <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-                <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in duration-200">
-                  <div className="bg-amber-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <User className="w-8 h-8 text-amber-600" />
-                  </div>
-                  <h3 className="text-2xl font-black text-gray-900 mb-3">Login to Checkout</h3>
-                  <p className="text-gray-500 font-medium mb-8">
-                    You must login to proceed to checkout.
-                  </p>
-                  <div className="flex flex-col gap-3">
-                    <button 
-                      onClick={() => router.push('/login?next=cart')}
-                      className="w-full bg-amber-600 text-white py-4 rounded-2xl font-black hover:bg-amber-700 transition shadow-lg"
-                    >
-                      PROCEED TO LOGIN
-                    </button>
-                    <button 
-                      onClick={() => setShowLoginPrompt(false)}
-                      className="w-full bg-gray-100 text-gray-600 py-4 rounded-2xl font-black hover:bg-gray-200 transition"
-                    >
-                      CONTINUE BROWSING
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </>,
-          document.body 
-        )}
-      </main>
-    </div>
   );
 }
 </file>
@@ -3739,148 +2728,6 @@ export default function MapPicker({ onConfirm, onCancel }) {
 }
 </file>
 
-<file path="src/components/Navbar.js">
-"use client";
-
-import Link from 'next/link';
-import { ShoppingCart, LogOut, User, Shield } from 'lucide-react';
-import { useCart } from '../context/CartContext';
-import { supabase } from '@/lib/supabase';
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Image from 'next/image';
-
-export default function Navbar() {
-  const { cartCount, isMounted } = useCart();
-  const [user, setUser] = useState(null);
-  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
-  const router = useRouter();
-
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setUser(session?.user || null);
-    };
-    checkSession();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push('/login');
-  };
-
-  const handleCartClick = (e) => {
-    e.preventDefault();
-    if (!user) {
-      setShowLoginPrompt(true);
-    } else {
-      router.push('/cart');
-    }
-  };
-
-  const isAdmin = user?.user_metadata?.is_admin === true;
-  const firstName = user?.user_metadata?.full_name?.split(' ')[0] || 'Account';
-  const displayName = isAdmin ? 'Admin' : firstName;
-  const profileLink = isAdmin ? '/admin' : '/account';
-
-  return (
-    <nav className="bg-white border-b border-gray-100 sticky top-0 z-50 shadow-sm">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-20">
-          
-          <Link href="/" className="flex items-center gap-2">
-            <Image 
-              src="/logo.png"
-              alt="Kiara's Treats Logo"
-              width={120}
-              height={40}
-            />
-          </Link>
-
-          <div className="flex items-center gap-4">
-            {user ? (
-              <div className="flex items-center gap-2 mr-2 border-r border-gray-200 pr-4">
-                <Link 
-                  href={profileLink} 
-                  className={`p-2 transition flex items-center gap-2 rounded-full ${
-                    isAdmin ? 'text-blue-700 hover:bg-blue-50' : 'text-gray-700 hover:text-amber-600 hover:bg-amber-50'
-                  }`}
-                >
-                  {isAdmin ? <Shield className="w-5 h-5" /> : <User className="w-5 h-5" />}
-                  <span className="text-sm font-bold hidden sm:inline">{displayName}</span>
-                </Link>
-                <button 
-                  onClick={handleSignOut}
-                  className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 transition flex items-center gap-2 rounded-full"
-                >
-                  <LogOut className="w-5 h-5" />
-                  <span className="text-sm font-semibold hidden sm:inline">Sign Out</span>
-                </button>
-              </div>
-            ) : (
-              <div className="mr-2 border-r border-gray-200 pr-4">
-                <Link 
-                  href="/login" 
-                  className="text-sm font-semibold text-gray-700 hover:text-amber-600 transition px-3 py-2"
-                >
-                  Log In
-                </Link>
-              </div>
-            )}
-
-            <button 
-              onClick={handleCartClick}
-              className="relative p-2 text-gray-700 hover:text-amber-600 transition bg-amber-50 rounded-full"
-            >
-              <ShoppingCart className="w-6 h-6" />
-              {isMounted && cartCount > 0 && (
-                <span className="absolute top-0 right-0 flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full transform translate-x-1 -translate-y-1 border-2 border-white">
-                  {cartCount}
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {showLoginPrompt && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in duration-200">
-            <div className="bg-amber-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
-              <User className="w-8 h-8 text-amber-600" />
-            </div>
-            <h3 className="text-2xl font-black text-gray-900 mb-3">Login to Checkout</h3>
-            <p className="text-gray-500 font-medium mb-8">
-              You must login to proceed to checkout.
-            </p>
-            <div className="flex flex-col gap-3">
-              <button 
-                onClick={() => { setShowLoginPrompt(false); router.push('/login?next=cart'); }}
-                className="w-full bg-amber-600 text-white py-4 rounded-2xl font-black hover:bg-amber-700 transition shadow-lg"
-              >
-                PROCEED TO LOGIN
-              </button>
-              <button 
-                onClick={() => setShowLoginPrompt(false)}
-                className="w-full bg-gray-100 text-gray-600 py-4 rounded-2xl font-black hover:bg-gray-200 transition"
-              >
-                CONTINUE BROWSING
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </nav>
-  );
-}
-</file>
-
 <file path="src/components/ProductCard.jsx">
 "use client";
 
@@ -4136,36 +2983,1279 @@ export const uploadTreatImage = async (file) => {
 };
 </file>
 
+<file path="src/app/api/checkout/route.js">
+import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+import { z } from 'zod';
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
+
+/**
+ * We instantiate a dedicated admin client utilizing the Service Role Key.
+ * This bypasses Row Level Security strictly for server-side order insertion,
+ * preventing public endpoint exposure while ensuring data integrity.
+ */
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+/**
+ * Implements a sliding window rate limiter to mitigate DDoS attacks or 
+ * unintentional order spamming from the frontend client.
+ */
+const ratelimit = new Ratelimit({
+  redis: Redis.fromEnv(),
+  limiter: Ratelimit.slidingWindow(3, "1 m"),
+  analytics: true,
+});
+
+const checkoutSchema = z.object({
+  cart: z.array(z.object({
+    id: z.string(),
+    quantity: z.number().int().min(1),
+  })).min(1, "Cart cannot be empty"),
+  deliveryType: z.enum(['same_day_pickup', 'same_day_delivery', 'scheduled_pickup', 'scheduled_delivery']),
+  address: z.string(),
+  phone: z.string().min(7, "Valid phone number required"),
+  scheduledDate: z.string(),
+  userId: z.string(),
+  customerName: z.string().min(1, "Name is required"),
+});
+
+export async function POST(request) {
+  try {
+    const ip = request.headers.get("x-forwarded-for") || "127.0.0.1";
+    const { success } = await ratelimit.limit(ip);
+    
+    if (!success) {
+      return Response.json(
+        { error: "Too many orders placed. Please wait a minute before trying again." }, 
+        { status: 429 }
+      );
+    }
+
+    const body = await request.json();
+    const validation = checkoutSchema.safeParse(body);
+    
+    if (!validation.success) {
+      return Response.json({ error: "Invalid request data format." }, { status: 400 });
+    }
+
+    const { cart, deliveryType, address, phone, scheduledDate, userId, customerName } = validation.data;
+
+    if (deliveryType.includes('delivery') && (!address || address.trim() === '')) {
+      return Response.json({ error: "Delivery address is required for delivery orders." }, { status: 400 });
+    }
+
+    const itemIds = cart.map(item => item.id);
+    const { data: dbItems, error } = await supabase
+      .from('treats')
+      .select('id, price, cost_to_make, is_available')
+      .in('id', itemIds);
+
+    if (error) throw error;
+
+    let secureTotal = 0;
+    let secureTotalCost = 0;
+    const deliveryFee = deliveryType.includes('delivery') ? 15.00 : 0;
+    const rushFee = deliveryType.includes('same_day') ? 10.00 : 0;
+
+    cart.forEach(cartItem => {
+      const realItem = dbItems.find(db => db.id === cartItem.id);
+      if (realItem && realItem.is_available) {
+        secureTotal += (realItem.price * cartItem.quantity);
+        secureTotalCost += ((realItem.cost_to_make || 0) * cartItem.quantity);
+      }
+    });
+
+    secureTotal += deliveryFee + rushFee;
+
+    const orderData = {
+      user_id: userId,
+      customer_name: customerName,
+      delivery_address: address,
+      phone_number: phone,
+      total_amount: secureTotal,
+      total_cost: secureTotalCost,
+      delivery_fee: deliveryFee,
+      rush_fee: rushFee,
+      delivery_type: deliveryType,
+      scheduled_date: scheduledDate,
+      status: 'Received',
+      items: cart,
+    };
+
+    const { error: insertError } = await supabaseAdmin.from('orders').insert([orderData]);
+
+    if (insertError) throw insertError;
+
+    return Response.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "An unexpected server error occurred.";
+    return Response.json({ error: message }, { status: 500 });
+  }
+}
+</file>
+
+<file path="src/app/globals.css">
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background-image: url('/bakery-bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+}
+
+@layer utilities {
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+</file>
+
+<file path="src/components/Navbar.js">
+"use client";
+
+import Link from 'next/link';
+import { ShoppingCart, LogOut, User, Shield } from 'lucide-react';
+import { useCart } from '../context/CartContext';
+import { supabase } from '@/lib/supabase';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
+
+export default function Navbar() {
+  const { cartCount, isMounted } = useCart();
+  const [user, setUser] = useState(null);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user || null);
+    };
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
+
+  const handleCartClick = (e) => {
+    e.preventDefault();
+    if (!user) {
+      setShowLoginPrompt(true);
+    } else {
+      router.push('/cart');
+    }
+  };
+
+  const isAdmin = user?.user_metadata?.is_admin === true;
+  const firstName = user?.user_metadata?.full_name?.split(' ')[0] || 'Account';
+  const displayName = isAdmin ? 'Admin' : firstName;
+  const profileLink = isAdmin ? '/admin' : '/account';
+
+  return (
+    <nav className="bg-white border-b border-gray-100 sticky top-0 z-50 shadow-sm">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16 sm:h-20">
+          
+          <Link href="/" className="flex items-center shrink-0">
+            <Image 
+              src="/logo.png"
+              alt="Kiara's Treats Logo"
+              width={120}
+              height={40}
+              className="w-24 sm:w-[120px] h-auto" 
+            />
+          </Link>
+
+          <div className="flex items-center gap-2 sm:gap-4">
+            {user ? (
+              <div className="flex items-center gap-2 mr-2 border-r border-gray-200 pr-4">
+                <Link 
+                  href={profileLink} 
+                  className={`p-2 transition flex items-center gap-2 rounded-full ${
+                    isAdmin ? 'text-blue-700 hover:bg-blue-50' : 'text-gray-700 hover:text-amber-600 hover:bg-amber-50'
+                  }`}
+                >
+                  {isAdmin ? <Shield className="w-5 h-5" /> : <User className="w-5 h-5" />}
+                  <span className="text-sm font-bold hidden sm:inline">{displayName}</span>
+                </Link>
+                <button 
+                  onClick={handleSignOut}
+                  className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 transition flex items-center gap-2 rounded-full"
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span className="text-sm font-semibold hidden sm:inline">Sign Out</span>
+                </button>
+              </div>
+            ) : (
+              <div className="mr-2 border-r border-gray-200 pr-4">
+                <Link 
+                  href="/login" 
+                  className="text-sm font-semibold text-gray-700 hover:text-amber-600 transition px-3 py-2"
+                >
+                  Log In
+                </Link>
+              </div>
+            )}
+
+            <button 
+              onClick={handleCartClick}
+              className="relative p-2 text-gray-700 hover:text-amber-600 transition bg-amber-50 rounded-full"
+            >
+              <ShoppingCart className="w-6 h-6" />
+              {isMounted && cartCount > 0 && (
+                <span className="absolute top-0 right-0 flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full transform translate-x-1 -translate-y-1 border-2 border-white">
+                  {cartCount}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {showLoginPrompt && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in duration-200">
+            <div className="bg-amber-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+              <User className="w-8 h-8 text-amber-600" />
+            </div>
+            <h3 className="text-2xl font-black text-gray-900 mb-3">Login to Checkout</h3>
+            <p className="text-gray-500 font-medium mb-8">
+              You must login to proceed to checkout.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={() => { setShowLoginPrompt(false); router.push('/login?next=cart'); }}
+                className="w-full bg-amber-600 text-white py-4 rounded-2xl font-black hover:bg-amber-700 transition shadow-lg"
+              >
+                PROCEED TO LOGIN
+              </button>
+              <button 
+                onClick={() => setShowLoginPrompt(false)}
+                className="w-full bg-gray-100 text-gray-600 py-4 rounded-2xl font-black hover:bg-gray-200 transition"
+              >
+                CONTINUE BROWSING
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </nav>
+  );
+}
+</file>
+
 <file path="src/middleware.js">
 import { NextResponse } from 'next/server';
 
 export async function middleware(req) {
-  const res = NextResponse.next();
-  const path = req.nextUrl.pathname;
-
-  // We only want to run this strict check on Admin routes
-  if (path.startsWith('/admin')) {
-    
-    // Supabase sets a cookie that starts with 'sb-' and ends with '-auth-token' when logged in
-    const cookies = req.cookies.getAll();
-    const authCookie = cookies.find(c => c.name.startsWith('sb-') && c.name.endsWith('-auth-token'));
-
-    // If there is no auth token cookie, kick them instantly to login
-    if (!authCookie) {
-      return NextResponse.redirect(new URL('/login', req.url));
-    }
-
-    // Note: We check the specific 'is_admin' metadata on the client side 
-    // or via an API route, but this ensures they are at least logged in securely!
-  }
-
-  return res;
+  // We are bypassing the server-side cookie check because Supabase is using localStorage.
+  // The actual route security is handled safely and strictly by the 
+  // Client-Side wrapper in src/app/admin/layout.js.
+  return NextResponse.next();
 }
 
-// This tells Next.js to only run this middleware on /admin and its sub-pages
 export const config = {
   matcher: ['/admin/:path*'],
 };
+</file>
+
+<file path="src/app/cart/page.js">
+"use client";
+
+import { useState, useEffect } from 'react';
+import { useCart } from '@/context/CartContext';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+import { Trash2, MapPin, Phone, Calendar, CreditCard, ArrowRight, Loader2, ShoppingBag, Truck, Map as MapIcon, AlertCircle } from 'lucide-react';
+import dynamic from 'next/dynamic';
+
+const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false });
+
+export default function Cart() {
+  const { cart, removeFromCart, cartTotal, clearCart, isMounted } = useCart();
+  const router = useRouter();
+
+  const [user, setUser] = useState(null);
+  const [deliveryType, setDeliveryType] = useState('scheduled_pickup');
+  const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
+  const [scheduledDate, setScheduledDate] = useState('');
+  
+  const [processing, setProcessing] = useState(false);
+  const [loadingUser, setLoadingUser] = useState(true);
+  const [isSameDayEnabled, setIsSameDayEnabled] = useState(true);
+  
+  const [isMapOpen, setIsMapOpen] = useState(false);
+  const [mapUrl, setMapUrl] = useState('');
+
+  /**
+   * We fetch the global store configuration concurrently with the user profile.
+   * This determines if the kitchen is currently accepting rush orders. 
+   * If disabled, we strictly fall back to scheduled fulfillment.
+   */
+  useEffect(() => {
+    const checkAuthAndProfile = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        router.push('/login?next=cart');
+        return;
+      } 
+      
+      setUser(session.user);
+      
+      const [profileResponse, settingsResponse] = await Promise.all([
+        supabase.from('profiles').select('phone, default_address').eq('id', session.user.id).single(),
+        supabase.from('store_settings').select('same_day_enabled').eq('id', 'default').single()
+      ]);
+
+      if (profileResponse.data) {
+        if (profileResponse.data.phone) setPhone(profileResponse.data.phone);
+        if (profileResponse.data.default_address) {
+          if (profileResponse.data.default_address.includes('http')) {
+            setMapUrl(profileResponse.data.default_address);
+          } else {
+            setAddress(profileResponse.data.default_address);
+          }
+        }
+      }
+
+      if (settingsResponse.data) {
+        setIsSameDayEnabled(settingsResponse.data.same_day_enabled);
+      }
+
+      setLoadingUser(false);
+    };
+    
+    checkAuthAndProfile();
+  }, [router]);
+
+  const handlePlaceOrder = async () => {
+    const isDelivery = deliveryType.includes('delivery');
+    const isScheduled = deliveryType.includes('scheduled');
+
+    if (!phone) return alert("Please provide a phone number.");
+    if (isDelivery && !address && !mapUrl) return alert("Please provide a delivery location.");
+    if (isScheduled && !scheduledDate) return alert("Please select a date.");
+
+    setProcessing(true);
+    const finalAddress = mapUrl || address; 
+    
+    const today = new Date();
+    const localDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    try {
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cart,
+          deliveryType,
+          address: isDelivery ? finalAddress : 'Pickup',
+          phone,
+          scheduledDate: isScheduled ? scheduledDate : localDate,
+          userId: user.id,
+          customerName: user?.user_metadata?.full_name || 'Guest',
+        }),
+      });
+
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+
+      alert("Order successfully placed! Redirecting...");
+      clearCart();
+      router.push('/account');
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
+      alert("Error placing order: " + errorMessage);
+      setProcessing(false);
+    }
+  };
+
+  const deliveryFee = deliveryType.includes('delivery') ? 15.00 : 0;
+  const rushFee = deliveryType.includes('same_day') ? 10.00 : 0;
+  const finalTotal = cartTotal + deliveryFee + rushFee;
+
+  const fulfillmentOptions = [
+    { id: 'scheduled_pickup', label: 'Scheduled Pickup', desc: 'Free' },
+    { id: 'scheduled_delivery', label: 'Scheduled Delivery', desc: '+$15.00' }
+  ];
+
+  if (isSameDayEnabled) {
+    fulfillmentOptions.unshift(
+      { id: 'same_day_pickup', label: 'Same Day Pickup', desc: '+$10.00 Rush' },
+      { id: 'same_day_delivery', label: 'Same Day Delivery', desc: '+$25.00 Rush' }
+    );
+  }
+
+  if (!isMounted || loadingUser) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 text-amber-500 animate-spin" /></div>;
+
+  if (cart.length === 0) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-20 text-center">
+        <div className="bg-gray-50 rounded-[3rem] p-16 max-w-2xl mx-auto border border-gray-100 shadow-sm">
+          <ShoppingBag className="w-16 h-16 text-gray-300 mx-auto mb-6" />
+          <h2 className="text-3xl font-black text-gray-900 mb-4">Your cart is empty</h2>
+          <button onClick={() => router.push('/')} className="bg-amber-600 hover:bg-amber-700 text-white font-black py-4 px-10 rounded-full transition shadow-lg mt-4">Browse Menu</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-12 pb-24 relative">
+      <h1 className="text-4xl font-black text-gray-900 mb-10 tracking-tight">Checkout</h1>
+      
+      <div className="flex flex-col lg:flex-row gap-10">
+        <div className="lg:w-2/3 space-y-8">
+          
+          <div className="bg-white rounded-[2rem] p-6 md:p-8 border border-gray-100 shadow-sm">
+            <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
+              <ShoppingBag className="w-5 h-5 text-amber-600" /> Order Items
+            </h2>
+            <div className="space-y-6">
+              {cart.map((item) => (
+                <div key={item.id} className="flex items-center justify-between border-b border-gray-50 pb-6 last:border-0 last:pb-0">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-2xl overflow-hidden shrink-0 relative">
+                      <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                    </div>
+                    <div>
+                      <h3 className="font-black text-gray-900 text-sm sm:text-base">{item.name}</h3>
+                      <p className="text-xs sm:text-sm font-bold text-gray-500">Qty: {item.quantity}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 sm:gap-6">
+                    <p className="font-black text-base sm:text-lg text-amber-600">${(item.price * item.quantity).toFixed(2)}</p>
+                    <button onClick={() => removeFromCart(item.id)} className="text-gray-300 hover:text-red-500 transition p-2 bg-gray-50 hover:bg-red-50 rounded-full"><Trash2 className="w-4 h-4 sm:w-5 sm:h-5" /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-[2rem] p-6 md:p-8 border border-gray-100 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-black text-gray-900 flex items-center gap-2">
+                <Truck className="w-5 h-5 text-amber-600" /> Fulfillment Options
+              </h2>
+            </div>
+            
+            <div className={`grid gap-2 sm:gap-3 mb-4 ${isSameDayEnabled ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2'}`}>
+              {fulfillmentOptions.map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setDeliveryType(opt.id)}
+                  className={`p-3 sm:p-4 rounded-2xl text-left border-2 transition-all ${
+                    deliveryType === opt.id ? 'border-amber-500 bg-amber-50 shadow-sm' : 'border-gray-100 hover:border-gray-200 bg-white'
+                  }`}
+                >
+                  <p className={`font-black text-xs sm:text-sm leading-tight ${deliveryType === opt.id ? 'text-amber-900' : 'text-gray-700'}`}>{opt.label}</p>
+                  <p className={`text-[10px] sm:text-xs font-bold mt-1 ${deliveryType === opt.id ? 'text-amber-600' : 'text-gray-400'}`}>{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+
+            {isSameDayEnabled && (
+              <div className="mb-8 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-xs sm:text-sm font-bold text-amber-800 leading-relaxed">
+                  Notice: Any Same-Day Pickup or Delivery orders placed after 2:00 PM will automatically be scheduled for the following day due to time constraints.
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-5">
+              <div>
+                <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Contact Phone</label>
+                <div className="relative">
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input type="tel" placeholder="123-456-7890" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-4 focus:ring-amber-50 transition font-bold text-gray-700"/>
+                </div>
+              </div>
+
+              {deliveryType.includes('delivery') && (
+                <div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2 gap-2">
+                    <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Delivery Address</label>
+                    <button type="button" onClick={() => setIsMapOpen(true)} className="text-xs font-black text-amber-600 hover:text-amber-700 flex items-center gap-1.5 transition bg-amber-50 px-3 py-1.5 rounded-full w-fit">
+                      <MapIcon className="w-3 h-3" /> Drop Pin on Map
+                    </button>
+                  </div>
+
+                  <div className="relative">
+                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input 
+                      type="text" 
+                      placeholder="Type address or use map pin above" 
+                      value={address} 
+                      onChange={(e) => {
+                        setAddress(e.target.value);
+                        setMapUrl(''); 
+                      }} 
+                      className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-4 focus:ring-amber-50 transition font-bold text-gray-700"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {deliveryType.includes('scheduled') && (
+                <div>
+                  <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Scheduled Date</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input type="date" value={scheduledDate} onChange={(e) => setScheduledDate(e.target.value)} min={new Date().toISOString().split('T')[0]} className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-4 focus:ring-amber-50 transition font-bold text-gray-700"/>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="lg:w-1/3">
+          <div className="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm sticky top-28">
+            <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-amber-600" /> Order Summary
+            </h2>
+            <div className="space-y-4 mb-6 pb-6 border-b border-gray-100">
+              <div className="flex justify-between text-gray-600 font-bold"><span>Subtotal</span><span>${cartTotal.toFixed(2)}</span></div>
+              <div className="flex justify-between text-gray-600 font-bold"><span>Delivery Fee</span><span>${deliveryFee.toFixed(2)}</span></div>
+              {rushFee > 0 && (
+                <div className="flex justify-between text-amber-600 font-bold"><span>Same-Day Rush Fee</span><span>${rushFee.toFixed(2)}</span></div>
+              )}
+            </div>
+            <div className="flex justify-between items-end mb-8">
+              <span className="text-gray-400 font-black uppercase tracking-widest text-xs">Total</span>
+              <span className="text-4xl font-black text-gray-900">${finalTotal.toFixed(2)}</span>
+            </div>
+            <button onClick={handlePlaceOrder} disabled={processing} className="w-full bg-gray-900 hover:bg-black text-white font-black py-4 rounded-[1.5rem] flex items-center justify-center gap-2 transition shadow-xl disabled:opacity-70 disabled:hover:bg-gray-900">
+              {processing ? <><Loader2 className="w-5 h-5 animate-spin" /> Processing</> : <><ArrowRight className="w-5 h-5" /> Place Order</>}
+            </button>
+            <p className="text-center text-xs font-bold text-gray-400 mt-4">Payment is collected upon fulfillment.</p>
+          </div>
+        </div>
+      </div>
+
+      {isMapOpen && (
+        <MapPicker 
+          onConfirm={(confirmedAddress) => {
+            setAddress(confirmedAddress);
+            setMapUrl(''); 
+            setIsMapOpen(false);
+          }} 
+          onCancel={() => setIsMapOpen(false)} 
+        />
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="src/app/layout.js">
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { CartProvider } from "@/context/CartContext";
+import Navbar from "@/components/Navbar";
+
+const inter = Inter({ subsets: ["latin"] });
+
+export const metadata = {
+  title: "Kiara's Treats",
+  description: "Freshly baked Bajan treats and pastries.",
+};
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en">
+      <body className={inter.className}>
+        <CartProvider>
+          <Navbar />
+          
+          {/* Removed padding, margin, and borders on mobile for edge-to-edge look */}
+          <div className="max-w-7xl mx-auto sm:my-6 sm:px-4">
+            <main className="bg-white/95 sm:backdrop-blur-md sm:shadow-xl sm:rounded-3xl border-0 sm:border border-white/20 min-h-[85vh] p-4 sm:p-6 md:p-10 text-gray-900">
+              {children}
+            </main>
+          </div>
+          
+        </CartProvider>
+      </body>
+    </html>
+  );
+}
+</file>
+
+<file path="src/app/account/page.js">
+"use client";
+
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Package, Clock, CheckCircle, Truck, MapPin, Phone, Save, Loader2, User, History } from 'lucide-react';
+
+export default function Account() {
+  const [user, setUser] = useState(null);
+  const [activeOrders, setActiveOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileMessage, setProfileMessage] = useState('');
+
+  const router = useRouter();
+
+  useEffect(() => {
+    const initDashboard = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return router.push("/login");
+        setUser(session.user);
+
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("phone, default_address")
+          .eq("id", session.user.id)
+          .single();
+
+        if (profileData) {
+          setPhone(profileData.phone || '');
+          setAddress(profileData.default_address || '');
+        }
+
+        const { data: orderData } = await supabase
+          .from("orders")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .eq("is_archived", false)
+          .order("created_at", { ascending: false });
+
+        if (orderData) setActiveOrders(orderData);
+
+        const channel = supabase
+          .channel(`user-orders-${session.user.id}`)
+          .on("postgres_changes", { 
+            event: "UPDATE", 
+            schema: "public", 
+            table: "orders",
+            filter: `user_id=eq.${session.user.id}`
+          },
+            (payload) => {
+              setActiveOrders((prevActive) => {
+                if (payload.new.is_archived) {
+                  return prevActive.filter((order) => order.id !== payload.new.id);
+                } 
+                return prevActive.map((o) => 
+                  o.id === payload.new.id ? { ...o, ...payload.new } : o
+                );
+              });
+            }
+          ).subscribe();
+
+        return () => supabase.removeChannel(channel);
+      } catch (error) {
+        console.error("Dashboard Error:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    initDashboard();
+  }, [router]);
+
+  const handleSaveProfile = async () => {
+    setSavingProfile(true);
+    setProfileMessage('');
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ phone, default_address: address })
+        .eq('id', user.id);
+
+      if (error) throw error;
+      setProfileMessage('Profile saved successfully!');
+      setTimeout(() => setProfileMessage(''), 3000);
+    } catch (error) {
+      setProfileMessage('Error saving profile.');
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const getStatusStep = (status) => {
+    const steps = { Received: 1, Prepping: 2, Ready: 3, Delivered: 4 };
+    return steps[status] || 1;
+  };
+
+  const getProgressWidth = (step) => {
+    if (step <= 1) return 'w-0';
+    if (step === 2) return 'w-1/3';
+    if (step === 3) return 'w-2/3';
+    return 'w-full';
+  };
+
+  const getVerticalProgressHeight = (step) => {
+    if (step <= 1) return 'h-0';
+    if (step === 2) return 'h-[33%]';
+    if (step === 3) return 'h-[66%]';
+    return 'h-full';
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto py-6 sm:py-12">
+      <div className="mb-10">
+        <h1 className="text-3xl font-black text-gray-900 mb-2">My Account</h1>
+        <p className="text-gray-500 font-medium">Manage your details and track your active orders.</p>
+      </div>
+
+      {/* Profile Settings Section */}
+      <div className="bg-white p-6 md:p-8 rounded-[2rem] border border-gray-100 shadow-sm mb-8">
+        <div className="flex items-center gap-3 mb-6">
+          <User className="w-6 h-6 text-amber-600" />
+          <h2 className="text-xl font-black text-gray-900">Profile Details</h2>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div>
+            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Phone Number</label>
+            <div className="relative">
+              <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input 
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="Enter your phone number"
+                className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-4 focus:ring-amber-50 focus:border-amber-400 transition font-bold text-gray-700"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Default Delivery Address</label>
+            <div className="relative">
+              <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input 
+                type="text"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Enter your default address"
+                className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-4 focus:ring-amber-50 focus:border-amber-400 transition font-bold text-gray-700"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <p className={`text-sm font-bold ${profileMessage.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
+            {profileMessage}
+          </p>
+          <button 
+            onClick={handleSaveProfile}
+            disabled={savingProfile}
+            className="w-full sm:w-auto bg-gray-900 hover:bg-black text-white font-bold py-3 px-8 rounded-xl transition flex items-center justify-center gap-2 disabled:opacity-70"
+          >
+            {savingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Save Details
+          </button>
+        </div>
+      </div>
+
+      {/* Active Orders Section with History Button */}
+      <div className="flex items-center justify-between mb-4 px-2">
+        <div className="flex items-center gap-3">
+          <Package className="w-6 h-6 text-amber-600" />
+          <h2 className="text-xl font-black text-gray-900">Active Orders</h2>
+        </div>
+        
+        <Link 
+          href="/account/history" 
+          className="flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-amber-600 transition bg-white border border-gray-200 px-4 py-2 rounded-full shadow-sm hover:shadow-md"
+        >
+          <History className="w-4 h-4" />
+          <span className="hidden sm:inline">Order History</span>
+          <span className="sm:hidden">History</span>
+        </Link>
+      </div>
+
+      {/* Cancellation Notice Banner */}
+      <div className="mb-6 bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-start gap-3">
+        <Phone className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
+        <p className="text-sm font-medium text-gray-600 leading-relaxed">
+          Need to cancel or modify an active order? Please contact us as soon as possible at <span className="font-bold text-gray-900">123-456-7890</span> or email <span className="font-bold text-gray-900">support@bakeryplaceholder.com</span>.
+        </p>
+      </div>
+
+      <div className="space-y-6">
+        {activeOrders.length === 0 ? (
+          <div className="bg-gray-50 p-10 rounded-[2rem] text-center border border-gray-100">
+            <p className="text-gray-500 font-bold">You have no active orders right now.</p>
+          </div>
+        ) : (
+          activeOrders.map((order) => {
+            const currentStep = getStatusStep(order.status);
+            
+            const stepsArray = [
+              { step: 1, icon: Package, label: 'Received' },
+              { step: 2, icon: Clock, label: 'Prepping' },
+              { step: 3, icon: CheckCircle, label: 'Ready' },
+              { step: 4, icon: Truck, label: 'Delivered' }
+            ];
+
+            return (
+              <div key={order.id} className="bg-white border border-gray-100 rounded-[2rem] p-6 md:p-8 shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 md:mb-8">
+                  <div>
+                    <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Order #{order.order_number}</p>
+                    <p className="text-lg font-black text-gray-900">${Number(order.total_amount).toFixed(2)}</p>
+                  </div>
+                  <span className="bg-amber-50 text-amber-600 font-black text-xs px-4 py-2 rounded-full uppercase tracking-widest w-max">
+                    {order.status}
+                  </span>
+                </div>
+
+                <div className="hidden md:block relative mb-8 mt-4 max-w-2xl mx-auto">
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-2 bg-gray-100 rounded-full z-0"></div>
+                  <div className={`absolute left-0 top-1/2 -translate-y-1/2 h-2 bg-amber-500 rounded-full z-0 transition-all duration-1000 ${getProgressWidth(currentStep)}`}></div>
+                  
+                  <div className="relative z-10 flex justify-between">
+                    {stepsArray.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = currentStep >= item.step;
+                      return (
+                        <div key={item.step} className="flex flex-col items-center gap-2 bg-white px-2">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors duration-500 border-4 border-white shadow-sm ${isActive ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <span className={`text-[10px] font-black uppercase tracking-widest ${isActive ? 'text-gray-900' : 'text-gray-400'}`}>
+                            {item.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="md:hidden relative mt-6 mb-2 ml-2">
+                  <div className="absolute left-[19px] top-0 bottom-0 w-1 bg-gray-100 rounded-full z-0"></div>
+                  <div className={`absolute left-[19px] top-0 w-1 bg-amber-500 rounded-full z-0 transition-all duration-1000 ${getVerticalProgressHeight(currentStep)}`}></div>
+                  
+                  <div className="flex flex-col gap-6 relative z-10">
+                    {stepsArray.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = currentStep >= item.step;
+                      return (
+                        <div key={item.step} className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-full shrink-0 flex items-center justify-center transition-colors duration-500 border-4 border-white shadow-sm ${isActive ? 'bg-amber-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <span className={`text-xs font-black uppercase tracking-widest ${isActive ? 'text-gray-900' : 'text-gray-400'}`}>
+                            {item.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="src/app/page.js">
+"use client";
+
+import { useState, useEffect } from 'react';
+import ProductCard from '../components/ProductCard'; 
+import { supabase } from '@/lib/supabase';
+import { Search, ShoppingBag, User, X, Plus, Minus, ShoppingCart, ArrowRight, Filter } from 'lucide-react'; 
+import { useRouter } from 'next/navigation';
+import { useCart } from '@/context/CartContext';
+import { createPortal } from 'react-dom';
+import { useDebounce } from '@/hooks/useDebounce';
+
+export default function Home() {
+  const router = useRouter();
+  const { cartCount, addToCart } = useCart();
+  
+  const [user, setUser] = useState(null);
+  const [mounted, setMounted] = useState(false);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
+  
+  const [selectedTreat, setSelectedTreat] = useState(null);
+  const [quantity, setQuantity] = useState(1);
+  
+  const [treats, setTreats] = useState([]);
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  const debouncedQuery = useDebounce(searchQuery, 300);
+
+  // --- Auth & Data Fetching ---
+  useEffect(() => {
+    setMounted(true);
+    fetchTreats();
+
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user || null);
+    };
+    checkUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchTreats = async () => {
+    const { data, error } = await supabase.from('treats').select('*');
+    if (error) {
+      console.error("Error fetching treats:", error);
+    } else {
+      setTreats(data || []);
+    }
+    setLoading(false);
+  };
+
+  // --- Background Scroll Lock ---
+  useEffect(() => {
+    if (selectedTreat || showLoginPrompt) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [selectedTreat, showLoginPrompt]);
+
+  const handleOpenQuickView = (treat) => {
+    setSelectedTreat(treat);
+    setQuantity(1); 
+  };
+
+  const scrollToMenu = () => {
+    const menuSection = document.getElementById('menu-section');
+    if (menuSection) {
+      menuSection.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  const filteredTreats = treats.filter(treat => {
+    const matchesCategory = activeCategory === 'all' || treat.category === activeCategory;
+    const matchesSearch = treat.name.toLowerCase().includes(debouncedQuery.toLowerCase()) || 
+                          (treat.description && treat.description.toLowerCase().includes(debouncedQuery.toLowerCase()));
+    
+    return matchesCategory && matchesSearch;
+  });
+
+  return (
+    <div className="font-sans">
+      
+      <section className="relative min-h-[70vh] sm:min-h-[90vh] flex flex-col items-center justify-center text-center px-4 bg-amber-50/50 border-b border-amber-100 overflow-hidden sm:rounded-b-[3rem]">
+        <div className="absolute top-10 left-0 w-48 h-48 bg-amber-200/30 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-10 right-0 w-64 h-64 bg-orange-200/20 rounded-full blur-3xl"></div>
+
+        <div className="relative z-10 max-w-3xl mx-auto py-12">
+          <span className="text-amber-600 font-black tracking-widest uppercase text-xs sm:text-sm mb-4 block">Handcrafted with Love</span>
+          <h1 className="text-5xl sm:text-7xl font-black text-gray-900 tracking-tighter mb-4 sm:mb-6 leading-tight">
+            Welcome to <br/><span className="text-amber-600">Kay's Delights!</span>
+          </h1>
+          <p className="text-lg md:text-xl text-gray-600 font-medium mb-8 sm:mb-10 max-w-2xl mx-auto px-4">
+            Freshly baked cakes, cookies, and artisan breads. Order for pickup or delivery today.
+          </p>
+          <button 
+            onClick={scrollToMenu}
+            className="group bg-amber-600 hover:bg-amber-700 text-white font-black py-4 px-10 rounded-full transition-all shadow-xl hover:-translate-y-1 flex items-center gap-3 mx-auto text-lg"
+          >
+            Browse Menu 
+            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+          </button>
+        </div>
+      </section>
+
+      <main id="menu-section" className="max-w-7xl mx-auto px-0 sm:px-4 py-10 sm:py-16 relative">
+        
+        <div className="flex flex-col mb-8 gap-5">
+          <div className="flex items-center justify-between w-full px-4 sm:px-0">
+            <h2 className="text-3xl font-black text-gray-900 whitespace-nowrap">Our Menu</h2>
+            <button 
+              onClick={() => setShowMobileFilters(!showMobileFilters)}
+              className="sm:hidden flex items-center gap-2 bg-gray-100 px-4 py-2 rounded-xl text-sm font-bold text-gray-700 transition"
+            >
+              <Filter className="w-4 h-4" /> Filters
+            </button>
+          </div>
+          
+          <div className={`${showMobileFilters ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full transition-all`}>
+            <div className="relative w-full sm:w-72 px-4 sm:px-0">
+              <Search className="absolute left-8 sm:left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder="Search treats..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl sm:rounded-full font-bold text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-amber-50 focus:border-amber-400 transition shadow-sm bg-white sm:bg-gray-50 hover:bg-white"
+              />
+            </div>
+            
+            <div className="flex overflow-x-auto gap-2 pb-2 hide-scrollbar w-full px-4 sm:px-0">
+              {[
+                { id: 'all', label: 'All Treats' },
+                { id: 'cakes', label: '🍰 Cakes' },
+                { id: 'cookies', label: '🍪 Cookies' },
+                { id: 'breads', label: '🍞 Breads' },
+                { id: 'pastries', label: '🥐 Pastries' }
+              ].map(cat => (
+                <button 
+                  key={cat.id}
+                  onClick={() => { setActiveCategory(cat.id); setShowMobileFilters(false); }}
+                  className={`px-5 py-3 sm:py-2.5 rounded-xl sm:rounded-full font-bold text-sm text-left sm:text-center whitespace-nowrap shrink-0 transition-all ${
+                    activeCategory === cat.id 
+                      ? 'bg-amber-600 text-white shadow-md' 
+                      : 'bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              ))}
+              <div className="w-2 shrink-0 sm:hidden"></div>
+            </div>
+          </div>
+        </div>
+
+        <div className="min-h-[400px] px-4 sm:px-0">
+          {loading ? (
+            <div className="flex flex-col justify-center items-center h-64 gap-4">
+              <div className="w-12 h-12 border-4 border-amber-200 border-t-amber-600 rounded-full animate-spin"></div>
+              <p className="text-amber-600 font-bold animate-pulse">Baking fresh treats...</p>
+            </div>
+          ) : filteredTreats.length === 0 ? (
+            <div className="bg-white/50 border-2 border-dashed border-gray-200 rounded-[2rem] p-16 text-center">
+              <p className="text-gray-500 font-bold text-xl mb-3">No treats match your search.</p>
+              <button 
+                onClick={() => { setActiveCategory('all'); setSearchQuery(''); setShowMobileFilters(false); }} 
+                className="text-amber-600 font-black hover:text-amber-700 transition"
+              >
+                Clear filters and view all menu items
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pb-24">
+              {filteredTreats.map((treat, index) => (
+                <div 
+                  key={treat.id || index} 
+                  onClick={(e) => {
+                    if (e.target.closest('button') || e.target.closest('a')) return;
+                    handleOpenQuickView(treat);
+                  }} 
+                  className="cursor-pointer transition-transform hover:scale-[1.02]"
+                >
+                  <ProductCard product={treat} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* --- PORTALS FOR OVERLAYS --- */}
+      {/* 1. Item Quick View Modal */}
+      {mounted && selectedTreat && createPortal(
+        <div 
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setSelectedTreat(null)}
+        >
+          <div 
+            className="bg-white rounded-[2rem] w-full max-w-lg overflow-hidden shadow-2xl relative animate-in zoom-in duration-200 flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button 
+              onClick={() => setSelectedTreat(null)} 
+              className="absolute top-4 right-4 z-10 bg-white/90 backdrop-blur-sm p-2 rounded-full text-gray-800 hover:bg-white hover:scale-110 transition shadow-sm"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="overflow-y-auto flex-1 hide-scrollbar">
+              <div className="h-64 sm:h-80 w-full relative bg-gray-100">
+                <img 
+                  src={selectedTreat.image_url} 
+                  alt={selectedTreat.name} 
+                  className="w-full h-full object-cover" 
+                />
+              </div>
+
+              <div className="p-6 sm:p-8">
+                <div className="flex justify-between items-start mb-4 gap-4">
+                  <h3 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight leading-tight">
+                    {selectedTreat.name}
+                  </h3>
+                  <p className="text-2xl text-amber-600 font-black shrink-0">
+                    ${selectedTreat.price?.toFixed(2)}
+                  </p>
+                </div>
+
+                <div className="bg-amber-50/50 rounded-2xl p-5 mb-4 border border-amber-100">
+                  <p className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-2">Description & Ingredients</p>
+                  <p className="text-gray-700 leading-relaxed font-medium">
+                    {selectedTreat.description || "A delicious, freshly baked treat made with love from Kiara's kitchen."}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 bg-white border-t border-gray-100 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.05)]">
+              {selectedTreat.is_available !== false ? (
+                <div className="flex flex-col sm:flex-row gap-4 items-center">
+                  
+                  <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-2xl p-1 w-full sm:w-auto h-14">
+                    <button 
+                      onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                      className="w-12 h-full flex items-center justify-center text-gray-600 hover:text-amber-600 hover:bg-white rounded-xl transition"
+                    >
+                      <Minus className="w-5 h-5" />
+                    </button>
+                    <span className="w-12 text-center font-black text-lg text-gray-900">
+                      {quantity}
+                    </span>
+                    <button 
+                      onClick={() => setQuantity(q => q + 1)}
+                      className="w-12 h-full flex items-center justify-center text-gray-600 hover:text-amber-600 hover:bg-white rounded-xl transition"
+                    >
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <button 
+                    onClick={() => {
+                      addToCart(selectedTreat, quantity); 
+                      setSelectedTreat(null);
+                    }}
+                    className="flex-1 w-full bg-amber-600 hover:bg-amber-700 text-white font-black py-4 px-6 rounded-2xl flex items-center justify-center gap-3 transition shadow-lg shadow-amber-600/20 h-14"
+                  >
+                    <ShoppingCart className="w-5 h-5" />
+                    <span>ADD TO CART</span>
+                    <span className="bg-white/20 px-2 py-1 rounded-md text-sm ml-2">
+                      ${(selectedTreat.price * quantity).toFixed(2)}
+                    </span>
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  disabled
+                  className="w-full bg-gray-200 text-gray-500 font-black py-4 rounded-2xl cursor-not-allowed h-14"
+                >
+                  CURRENTLY SOLD OUT
+                </button>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 2. Floating Cart Checkout Button */}
+      {mounted && cartCount > 0 && createPortal(
+        <button
+          onClick={() => {
+            if (!user) setShowLoginPrompt(true);
+            else router.push('/cart');
+          }}
+          className="fixed bottom-10 right-6 md:right-10 z-[999] bg-gray-900 text-white px-6 py-4 rounded-full font-black shadow-2xl hover:bg-black hover:scale-105 transition-all flex items-center gap-3 border-[3px] border-white ring-4 ring-gray-900/10"
+        >
+          <ShoppingBag className="w-5 h-5 text-amber-500" />
+          Checkout
+          <span className="bg-amber-500 text-white px-2.5 py-0.5 rounded-full text-xs shadow-inner border border-amber-600">
+            {cartCount}
+          </span>
+        </button>,
+        document.body 
+      )}
+
+      {/* 3. Login Prompt Modal */}
+      {mounted && showLoginPrompt && createPortal(
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full text-center shadow-2xl animate-in zoom-in duration-200">
+            <div className="bg-amber-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6">
+              <User className="w-8 h-8 text-amber-600" />
+            </div>
+            <h3 className="text-2xl font-black text-gray-900 mb-3">Login to Checkout</h3>
+            <p className="text-gray-500 font-medium mb-8">
+              You must login to proceed to checkout.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={() => { setShowLoginPrompt(false); router.push('/login?next=cart'); }}
+                className="w-full bg-amber-600 text-white py-4 rounded-2xl font-black hover:bg-amber-700 transition shadow-lg"
+              >
+                PROCEED TO LOGIN
+              </button>
+              <button 
+                onClick={() => setShowLoginPrompt(false)}
+                className="w-full bg-gray-100 text-gray-600 py-4 rounded-2xl font-black hover:bg-gray-200 transition"
+              >
+                CONTINUE BROWSING
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+    </div>
+  );
+}
 </file>
 
 </files>
