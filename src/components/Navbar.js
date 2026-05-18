@@ -50,18 +50,19 @@ export default function Navbar() {
   return (
     <nav className="bg-white border-b border-gray-100 sticky top-0 z-50 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-20">
+        <div className="flex justify-between items-center h-16 sm:h-20">
           
-          <Link href="/" className="flex items-center gap-2">
+          <Link href="/" className="flex items-center shrink-0">
             <Image 
               src="/logo.png"
               alt="Kiara's Treats Logo"
               width={120}
               height={40}
+              className="w-24 sm:w-[120px] h-auto" 
             />
           </Link>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             {user ? (
               <div className="flex items-center gap-2 mr-2 border-r border-gray-200 pr-4">
                 <Link 

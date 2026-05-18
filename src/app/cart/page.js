@@ -7,13 +7,13 @@ import { supabase } from '@/lib/supabase';
 import { Trash2, MapPin, Phone, Calendar, CreditCard, ArrowRight, Loader2, ShoppingBag, Truck, Map as MapIcon } from 'lucide-react';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
+
 const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false });
 
 export default function Cart() {
   const { cart, removeFromCart, cartTotal, clearCart, isMounted } = useCart();
   const router = useRouter();
 
-  // Basic State
   const [user, setUser] = useState(null);
   const [deliveryType, setDeliveryType] = useState('pickup');
   const [address, setAddress] = useState('');
@@ -21,8 +21,6 @@ export default function Cart() {
   const [scheduledDate, setScheduledDate] = useState('');
   const [processing, setProcessing] = useState(false);
   const [loadingUser, setLoadingUser] = useState(true);
-
-  // Map Modal State
   const [isMapOpen, setIsMapOpen] = useState(false);
   const [mapUrl, setMapUrl] = useState('');
 
@@ -129,17 +127,17 @@ export default function Cart() {
               {cart.map((item) => (
                 <div key={item.id} className="flex items-center justify-between border-b border-gray-50 pb-6 last:border-0 last:pb-0">
                   <div className="flex items-center gap-4">
-                    <div className="w-20 h-20 bg-gray-100 rounded-2xl overflow-hidden shrink-0 relative">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-2xl overflow-hidden shrink-0 relative">
                       <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="80px" />
                     </div>
                     <div>
-                      <h3 className="font-black text-gray-900">{item.name}</h3>
-                      <p className="text-sm font-bold text-gray-500">Qty: {item.quantity}</p>
+                      <h3 className="font-black text-gray-900 text-sm sm:text-base">{item.name}</h3>
+                      <p className="text-xs sm:text-sm font-bold text-gray-500">Qty: {item.quantity}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-6">
-                    <p className="font-black text-lg text-amber-600">${(item.price * item.quantity).toFixed(2)}</p>
-                    <button onClick={() => removeFromCart(item.id)} className="text-gray-300 hover:text-red-500 transition p-2 bg-gray-50 hover:bg-red-50 rounded-full"><Trash2 className="w-5 h-5" /></button>
+                  <div className="flex items-center gap-4 sm:gap-6">
+                    <p className="font-black text-base sm:text-lg text-amber-600">${(item.price * item.quantity).toFixed(2)}</p>
+                    <button onClick={() => removeFromCart(item.id)} className="text-gray-300 hover:text-red-500 transition p-2 bg-gray-50 hover:bg-red-50 rounded-full"><Trash2 className="w-4 h-4 sm:w-5 sm:h-5" /></button>
                   </div>
                 </div>
               ))}
@@ -150,22 +148,22 @@ export default function Cart() {
             <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
               <Truck className="w-5 h-5 text-amber-600" /> Fulfillment Options
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-8">
               {[
                 { id: 'pickup', label: 'Pickup', desc: 'Free' },
                 { id: 'delivery', label: 'Delivery', desc: '+$15.00' },
-                { id: 'pickup_scheduled', label: 'Scheduled Pickup', desc: 'Plan ahead' },
-                { id: 'delivery_scheduled', label: 'Scheduled Delivery', desc: '+$15.00' }
+                { id: 'pickup_scheduled', label: 'Later Pickup', desc: 'Plan ahead' },
+                { id: 'delivery_scheduled', label: 'Later Delivery', desc: '+$15.00' }
               ].map((opt) => (
                 <button
                   key={opt.id}
                   onClick={() => setDeliveryType(opt.id)}
-                  className={`p-4 rounded-2xl text-left border-2 transition-all ${
+                  className={`p-3 sm:p-4 rounded-2xl text-left border-2 transition-all ${
                     deliveryType === opt.id ? 'border-amber-500 bg-amber-50 shadow-sm' : 'border-gray-100 hover:border-gray-200 bg-white'
                   }`}
                 >
-                  <p className={`font-black text-sm ${deliveryType === opt.id ? 'text-amber-900' : 'text-gray-700'}`}>{opt.label}</p>
-                  <p className={`text-xs font-bold mt-1 ${deliveryType === opt.id ? 'text-amber-600' : 'text-gray-400'}`}>{opt.desc}</p>
+                  <p className={`font-black text-xs sm:text-sm leading-tight ${deliveryType === opt.id ? 'text-amber-900' : 'text-gray-700'}`}>{opt.label}</p>
+                  <p className={`text-[10px] sm:text-xs font-bold mt-1 ${deliveryType === opt.id ? 'text-amber-600' : 'text-gray-400'}`}>{opt.desc}</p>
                 </button>
               ))}
             </div>
@@ -181,9 +179,9 @@ export default function Cart() {
 
               {deliveryType.includes('delivery') && (
                 <div>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2 gap-2">
                     <label className="block text-xs font-black text-gray-400 uppercase tracking-widest">Delivery Address</label>
-                    <button type="button" onClick={() => setIsMapOpen(true)} className="text-xs font-black text-amber-600 hover:text-amber-700 flex items-center gap-1.5 transition bg-amber-50 px-3 py-1.5 rounded-full">
+                    <button type="button" onClick={() => setIsMapOpen(true)} className="text-xs font-black text-amber-600 hover:text-amber-700 flex items-center gap-1.5 transition bg-amber-50 px-3 py-1.5 rounded-full w-fit">
                       <MapIcon className="w-3 h-3" /> Drop Pin on Map
                     </button>
                   </div>
@@ -196,7 +194,7 @@ export default function Cart() {
                       value={address} 
                       onChange={(e) => {
                         setAddress(e.target.value);
-                        setMapUrl(''); // Clear URL if they manually type
+                        setMapUrl(''); 
                       }} 
                       className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-4 focus:ring-amber-50 transition font-bold text-gray-700"
                     />
@@ -238,12 +236,11 @@ export default function Cart() {
         </div>
       </div>
 
-      {/* Render the Custom MapPicker Component */}
       {isMapOpen && (
         <MapPicker 
           onConfirm={(confirmedAddress) => {
             setAddress(confirmedAddress);
-            setMapUrl(''); // Clear previous URL logic since MapPicker gives a clean address
+            setMapUrl(''); 
             setIsMapOpen(false);
           }} 
           onCancel={() => setIsMapOpen(false)} 

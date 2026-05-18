@@ -13,14 +13,12 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      {/* Removed bg-gray-50 so the bakery-bg.jpg in your CSS shows up */}
       <body className={inter.className}>
         <CartProvider>
           <Navbar />
           
-          {/* This wrapper creates the solid content area on every page */}
-          <div className="max-w-7xl mx-auto my-6 px-4">
-            <main className="bg-white/95 backdrop-blur-md shadow-xl rounded-3xl border border-white/20 min-h-[85vh] p-6 md:p-10 text-gray-900">
+          <div className="max-w-7xl mx-auto my-2 sm:my-6 px-2 sm:px-4">
+            <main className="bg-white/95 backdrop-blur-md shadow-xl rounded-2xl sm:rounded-3xl border border-white/20 min-h-[85vh] p-4 sm:p-6 md:p-10 text-gray-900">
               {children}
             </main>
           </div>
