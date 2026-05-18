@@ -1,7 +1,14 @@
 import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
+
+// Create a secure backend-only client that bypasses RLS safely
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY // The secret key
+);
 
 const ratelimit = new Ratelimit({
   redis: Redis.fromEnv(),
@@ -47,6 +54,7 @@ export async function POST(request) {
       return Response.json({ error: "Delivery address is required for delivery orders." }, { status: 400 });
     }
 
+    // We can still use the regular client for reading data
     const itemIds = cart.map(item => item.id);
     const { data: dbItems, error } = await supabase
       .from('treats')
@@ -85,7 +93,8 @@ export async function POST(request) {
       items: cart,
     };
 
-    const { error: insertError } = await supabase.from('orders').insert([orderData]);
+    // SECURE FIX: We use the Admin Client to securely insert the order
+    const { error: insertError } = await supabaseAdmin.from('orders').insert([orderData]);
 
     if (insertError) throw insertError;
 
