@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react';
 import { useCart } from '@/context/CartContext';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Trash2, MapPin, Phone, Calendar, CreditCard, ArrowRight, Loader2, ShoppingBag, Truck, Map as MapIcon } from 'lucide-react';
-import Image from 'next/image';
+import { Trash2, MapPin, Phone, Calendar, CreditCard, ArrowRight, Loader2, ShoppingBag, Truck, Map as MapIcon, AlertCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
 const MapPicker = dynamic(() => import('@/components/MapPicker'), { ssr: false });
@@ -15,7 +14,8 @@ export default function Cart() {
   const router = useRouter();
 
   const [user, setUser] = useState(null);
-  const [deliveryType, setDeliveryType] = useState('pickup');
+  // Default to a scheduled pickup to avoid accidental rush fees
+  const [deliveryType, setDeliveryType] = useState('pickup_scheduled');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [scheduledDate, setScheduledDate] = useState('');
@@ -94,6 +94,7 @@ export default function Cart() {
     }
   };
 
+  // Fee Calculation Logic
   const deliveryFee = deliveryType.includes('delivery') ? 15.00 : 0;
   const rushFee = deliveryType.includes('same_day') ? 10.00 : 0;
   const finalTotal = cartTotal + deliveryFee + rushFee;
@@ -119,6 +120,7 @@ export default function Cart() {
       <div className="flex flex-col lg:flex-row gap-10">
         <div className="lg:w-2/3 space-y-8">
           
+          {/* Order Items Section */}
           <div className="bg-white rounded-[2rem] p-6 md:p-8 border border-gray-100 shadow-sm">
             <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
               <ShoppingBag className="w-5 h-5 text-amber-600" /> Order Items
@@ -128,7 +130,8 @@ export default function Cart() {
                 <div key={item.id} className="flex items-center justify-between border-b border-gray-50 pb-6 last:border-0 last:pb-0">
                   <div className="flex items-center gap-4">
                     <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-2xl overflow-hidden shrink-0 relative">
-                      <Image src={item.image_url} alt={item.name} fill className="object-cover" sizes="80px" />
+                      {/* FIXED: Replaced Next.js Image with standard img to fix external URL loading */}
+                      <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
                     </div>
                     <div>
                       <h3 className="font-black text-gray-900 text-sm sm:text-base">{item.name}</h3>
@@ -144,16 +147,19 @@ export default function Cart() {
             </div>
           </div>
 
+          {/* Fulfillment Options Section */}
           <div className="bg-white rounded-[2rem] p-6 md:p-8 border border-gray-100 shadow-sm">
             <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
               <Truck className="w-5 h-5 text-amber-600" /> Fulfillment Options
             </h2>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-8">
+            
+            {/* FIXED: Updated IDs to trigger the math logic correctly */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mb-4">
               {[
-                { id: 'pickup', label: 'Pickup', desc: 'Free' },
-                { id: 'delivery', label: 'Delivery', desc: '+$15.00' },
-                { id: 'pickup_scheduled', label: 'Later Pickup', desc: 'Plan ahead' },
-                { id: 'delivery_scheduled', label: 'Later Delivery', desc: '+$15.00' }
+                { id: 'pickup_same_day', label: 'Same Day Pickup', desc: '+$10.00 Rush' },
+                { id: 'delivery_same_day', label: 'Same Day Delivery', desc: '+$25.00 Rush' },
+                { id: 'pickup_scheduled', label: 'Scheduled Pickup', desc: 'Free' },
+                { id: 'delivery_scheduled', label: 'Scheduled Delivery', desc: '+$15.00' }
               ].map((opt) => (
                 <button
                   key={opt.id}
@@ -166,6 +172,14 @@ export default function Cart() {
                   <p className={`text-[10px] sm:text-xs font-bold mt-1 ${deliveryType === opt.id ? 'text-amber-600' : 'text-gray-400'}`}>{opt.desc}</p>
                 </button>
               ))}
+            </div>
+
+            {/* NEW: 2/3 PM Time Constraint Notice */}
+            <div className="mb-8 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs sm:text-sm font-bold text-amber-800 leading-relaxed">
+                Notice: Any Same-Day Pickup or Delivery orders placed after 2:00 PM will automatically be scheduled for the following day due to time constraints.
+              </p>
             </div>
 
             <div className="space-y-5">
@@ -215,6 +229,7 @@ export default function Cart() {
           </div>
         </div>
 
+        {/* Order Summary Section */}
         <div className="lg:w-1/3">
           <div className="bg-white rounded-[2rem] p-8 border border-gray-100 shadow-sm sticky top-28">
             <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
@@ -222,7 +237,13 @@ export default function Cart() {
             </h2>
             <div className="space-y-4 mb-6 pb-6 border-b border-gray-100">
               <div className="flex justify-between text-gray-600 font-bold"><span>Subtotal</span><span>${cartTotal.toFixed(2)}</span></div>
+              
+              {/* Split fees to make it clear to the customer */}
               <div className="flex justify-between text-gray-600 font-bold"><span>Delivery Fee</span><span>${deliveryFee.toFixed(2)}</span></div>
+              {rushFee > 0 && (
+                <div className="flex justify-between text-amber-600 font-bold"><span>Same-Day Rush Fee</span><span>${rushFee.toFixed(2)}</span></div>
+              )}
+
             </div>
             <div className="flex justify-between items-end mb-8">
               <span className="text-gray-400 font-black uppercase tracking-widest text-xs">Total</span>

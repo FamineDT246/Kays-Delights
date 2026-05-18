@@ -180,7 +180,7 @@ export default function Account() {
       </div>
 
       {/* Active Orders Section with History Button */}
-      <div className="flex items-center justify-between mb-6 px-2">
+      <div className="flex items-center justify-between mb-4 px-2">
         <div className="flex items-center gap-3">
           <Package className="w-6 h-6 text-amber-600" />
           <h2 className="text-xl font-black text-gray-900">Active Orders</h2>
@@ -194,6 +194,14 @@ export default function Account() {
           <span className="hidden sm:inline">Order History</span>
           <span className="sm:hidden">History</span>
         </Link>
+      </div>
+
+      {/* Cancellation Notice Banner */}
+      <div className="mb-6 bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-start gap-3">
+        <Phone className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
+        <p className="text-sm font-medium text-gray-600 leading-relaxed">
+          Need to cancel or modify an active order? Please contact us as soon as possible at <span className="font-bold text-gray-900">123-456-7890</span> or email <span className="font-bold text-gray-900">support@bakeryplaceholder.com</span>.
+        </p>
       </div>
 
       <div className="space-y-6">
