@@ -3,14 +3,14 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { Package, Clock, CheckCircle, Truck, MapPin, Phone, Save, Loader2, User } from 'lucide-react';
+import Link from 'next/link';
+import { Package, Clock, CheckCircle, Truck, MapPin, Phone, Save, Loader2, User, History } from 'lucide-react';
 
 export default function Account() {
   const [user, setUser] = useState(null);
   const [activeOrders, setActiveOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Profile States
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
@@ -25,7 +25,6 @@ export default function Account() {
         if (!session) return router.push("/login");
         setUser(session.user);
 
-        // Fetch User Profile
         const { data: profileData } = await supabase
           .from("profiles")
           .select("phone, default_address")
@@ -37,7 +36,6 @@ export default function Account() {
           setAddress(profileData.default_address || '');
         }
 
-        // Fetch Active Orders
         const { data: orderData } = await supabase
           .from("orders")
           .select("*")
@@ -47,7 +45,6 @@ export default function Account() {
 
         if (orderData) setActiveOrders(orderData);
 
-        // Secure Real-Time Subscription
         const channel = supabase
           .channel(`user-orders-${session.user.id}`)
           .on("postgres_changes", { 
@@ -109,7 +106,6 @@ export default function Account() {
     return 'w-full';
   };
 
-  // For the vertical mobile tracker
   const getVerticalProgressHeight = (step) => {
     if (step <= 1) return 'h-0';
     if (step === 2) return 'h-[33%]';
@@ -183,10 +179,21 @@ export default function Account() {
         </div>
       </div>
 
-      {/* Active Orders Section */}
-      <div className="flex items-center gap-3 mb-6 px-2">
-        <Package className="w-6 h-6 text-amber-600" />
-        <h2 className="text-xl font-black text-gray-900">Active Orders</h2>
+      {/* Active Orders Section with History Button */}
+      <div className="flex items-center justify-between mb-6 px-2">
+        <div className="flex items-center gap-3">
+          <Package className="w-6 h-6 text-amber-600" />
+          <h2 className="text-xl font-black text-gray-900">Active Orders</h2>
+        </div>
+        
+        <Link 
+          href="/account/history" 
+          className="flex items-center gap-2 text-sm font-bold text-gray-600 hover:text-amber-600 transition bg-white border border-gray-200 px-4 py-2 rounded-full shadow-sm hover:shadow-md"
+        >
+          <History className="w-4 h-4" />
+          <span className="hidden sm:inline">Order History</span>
+          <span className="sm:hidden">History</span>
+        </Link>
       </div>
 
       <div className="space-y-6">
@@ -217,7 +224,6 @@ export default function Account() {
                   </span>
                 </div>
 
-                {/* DESKTOP HORIZONTAL TRACKER */}
                 <div className="hidden md:block relative mb-8 mt-4 max-w-2xl mx-auto">
                   <div className="absolute left-0 top-1/2 -translate-y-1/2 w-full h-2 bg-gray-100 rounded-full z-0"></div>
                   <div className={`absolute left-0 top-1/2 -translate-y-1/2 h-2 bg-amber-500 rounded-full z-0 transition-all duration-1000 ${getProgressWidth(currentStep)}`}></div>
@@ -240,7 +246,6 @@ export default function Account() {
                   </div>
                 </div>
 
-                {/* MOBILE VERTICAL TRACKER */}
                 <div className="md:hidden relative mt-6 mb-2 ml-2">
                   <div className="absolute left-[19px] top-0 bottom-0 w-1 bg-gray-100 rounded-full z-0"></div>
                   <div className={`absolute left-[19px] top-0 w-1 bg-amber-500 rounded-full z-0 transition-all duration-1000 ${getVerticalProgressHeight(currentStep)}`}></div>
